@@ -79,9 +79,9 @@ export async function openapi() {
   const result = await generateSpecs(app, {
     documentation: {
       info: {
-        title: "opencode",
+        title: "browsercode",
         version: "1.0.0",
-        description: "opencode api",
+        description: "browsercode api",
       },
       openapi: "3.1.1",
     },

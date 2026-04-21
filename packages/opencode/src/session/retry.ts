@@ -5,9 +5,11 @@ import { iife } from "@/util/iife"
 
 export type Err = ReturnType<NamedError["toObject"]>
 
-// This exported message is shared with the TUI upsell detector. Matching on a
-// literal error string kind of sucks, but it is the simplest for now.
-export const GO_UPSELL_MESSAGE = "Free usage exceeded, subscribe to Go https://opencode.ai/go"
+// Upstream OpenCode uses this string as a sentinel to trigger the TUI upsell
+// banner for opencode.ai subscriptions. BrowserCode does not use the opencode.ai
+// backend, so this code path should never fire. The TUI handler compares for
+// literal equality; leaving this as a neutral string keeps the upsell UI dark.
+export const GO_UPSELL_MESSAGE = "Free usage exceeded"
 
 export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2

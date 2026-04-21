@@ -67,7 +67,7 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
       "/instance/dispose",
       describeRoute({
         summary: "Dispose instance",
-        description: "Clean up and dispose the current OpenCode instance, releasing all resources.",
+        description: "Clean up and dispose the current BrowserCode instance, releasing all resources.",
         operationId: "instance.dispose",
         responses: {
           200: {
@@ -89,7 +89,7 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
       "/path",
       describeRoute({
         summary: "Get paths",
-        description: "Retrieve the current working directory and related path information for the OpenCode instance.",
+        description: "Retrieve the current working directory and related path information for the BrowserCode instance.",
         operationId: "path.get",
         responses: {
           200: {
@@ -183,7 +183,7 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
       "/command",
       describeRoute({
         summary: "List commands",
-        description: "Get a list of all available commands in the OpenCode system.",
+        description: "Get a list of all available commands in the BrowserCode system.",
         operationId: "command.list",
         responses: {
           200: {
@@ -206,7 +206,7 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
       "/agent",
       describeRoute({
         summary: "List agents",
-        description: "Get a list of all available AI agents in the OpenCode system.",
+        description: "Get a list of all available AI agents in the BrowserCode system.",
         operationId: "app.agents",
         responses: {
           200: {
@@ -229,7 +229,7 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket): Hono => {
       "/skill",
       describeRoute({
         summary: "List skills",
-        description: "Get a list of all available skills in the OpenCode system.",
+        description: "Get a list of all available skills in the BrowserCode system.",
         operationId: "app.skills",
         responses: {
           200: {

@@ -97,7 +97,7 @@ export const GlobalRoutes = lazy(() =>
       "/event",
       describeRoute({
         summary: "Get global events",
-        description: "Subscribe to global events from the OpenCode system using server-sent events.",
+        description: "Subscribe to global events from the BrowserCode system using server-sent events.",
         operationId: "global.event",
         responses: {
           200: {
@@ -186,7 +186,7 @@ export const GlobalRoutes = lazy(() =>
       "/dispose",
       describeRoute({
         summary: "Dispose instance",
-        description: "Clean up and dispose all OpenCode instances, releasing all resources.",
+        description: "Clean up and dispose all BrowserCode instances, releasing all resources.",
         operationId: "global.dispose",
         responses: {
           200: {
