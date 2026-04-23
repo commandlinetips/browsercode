@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "version": "0.0.0",
+  "name": "@browser-use/bcode-browser",
+  "description": "BrowserCode Level-1 code: vendored browser-harness, FetchUse service, cloud integrations, tool implementations",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsgo --noEmit"
+  },
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:"
+  }
+}

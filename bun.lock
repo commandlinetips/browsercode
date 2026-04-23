@@ -81,6 +81,14 @@
         "vite-plugin-solid": "catalog:",
       },
     },
+    "packages/bcode-browser": {
+      "name": "@browser-use/bcode-browser",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+      },
+    },
     "packages/console/app": {
       "name": "@opencode-ai/console-app",
       "version": "1.14.19",
@@ -1014,6 +1022,8 @@
     "@babel/traverse": ["@babel/traverse@7.29.0", "", { "dependencies": { "@babel/code-frame": "^7.29.0", "@babel/generator": "^7.29.0", "@babel/helper-globals": "^7.28.0", "@babel/parser": "^7.29.0", "@babel/template": "^7.28.6", "@babel/types": "^7.29.0", "debug": "^4.3.1" } }, "sha512-4HPiQr0X7+waHfyXPZpWPfWL/J7dcN1mx9gL6WdQVMbPnF3+ZhSMs8tCxN7oHddJE9fhNE7+lxdnlyemKfJRuA=="],
 
     "@babel/types": ["@babel/types@7.29.0", "", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
+
+    "@browser-use/bcode-browser": ["@browser-use/bcode-browser@workspace:packages/bcode-browser"],
 
     "@browser-use/browsercode-core": ["@browser-use/browsercode-core@workspace:packages/opencode"],
 
