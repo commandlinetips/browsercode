@@ -2,10 +2,12 @@
 
 This doc tracks BrowserCode's relationship to its two upstream sources:
 
-1. **anomalyco/opencode** — forked in as the bulk of this repo.
-2. **browser-use/browser-harness** — vendored into `packages/bcode-browser/harness/` (planned, ROADMAP A2).
+1. **anomalyco/opencode** — forked in as the bulk of this repo. Sync runbook: `opencode-sync.md`.
+2. **browser-use/browser-harness** — vendored into `packages/bcode-browser/harness/`. Sync runbook: `harness-sync.md`.
 
-Two sections: **modification zones** (where is it safe to change upstream code?) and **sync log** (when did we last pull each upstream and to what commit?).
+The two are deliberately independent — different upstreams, different cadences, different sync mechanisms (merge vs file-copy). One agent pulls one upstream at a time; never both in the same PR.
+
+Sections: **modification zones** (where is it safe to change upstream code?), **sync log** (when did we last pull each upstream and to what commit?), **harness divergences** (per-file deliberate-deltas list, used during harness sync).
 
 ---
 
@@ -52,6 +54,8 @@ Future Yellow modifications (per ROADMAP):
 
 Every Yellow modification should be evaluated for conversion to a Green extension point via upstream PR. See decisions.md §1c and ROADMAP F8.
 
+The harness has its own narrower zone policy (see §3 below): `helpers.py` is editable, `daemon.py`/`admin.py` are protected, deliberate divergences are logged per-file.
+
 ---
 
 ## 2. Sync log
@@ -63,22 +67,48 @@ Each upstream has its own append-only table. Add a row every time you pull.
 **Upstream:** https://github.com/anomalyco/opencode
 **Upstream branch we track:** `dev` (upstream default)
 **Our default branch:** `main`
+**Runbook:** `opencode-sync.md`
 
 | Date | From SHA | To SHA | By | Notes |
 |---|---|---|---|---|
-| 2026-04-20 | — (initial) | `3e8abac6` | user | Mirror push after fork creation. Tagged `baseline/pre-rename`. See `scripts/check-upstream.sh` output for current drift. |
+| 2026-04-20 | — (initial) | `3e8abac6` | user | Mirror push after fork creation. Tagged `baseline/pre-rename`. |
 
 ### browser-use/browser-harness → `packages/bcode-browser/harness/`
 
 **Upstream:** https://github.com/browser-use/browser-harness
-**In-tree provenance:** `packages/bcode-browser/harness/PROVENANCE.md` (per-file edit log lives there).
+**Upstream branch we track:** `main`
+**Runbook:** `harness-sync.md`
 
 | Date | From SHA | To SHA | By | Notes |
 |---|---|---|---|---|
-| — | — | — | — | Not vendored yet. First row lands with ROADMAP A2. |
+| 2026-04-26 | — (initial) | `216a2c9` | bcode | Initial vendor at A2. Verbatim copy of `browser-use/browser-harness@216a2c9`. No divergences yet. |
+
+---
+
+## 3. Harness divergences
+
+Per-file record of where `packages/bcode-browser/harness/` deliberately differs from upstream. Read this *before* a sync diff so intentional differences aren't mistaken for missing features.
+
+Path-allowlist policy (decisions.md §3.7, §4.5):
+
+- `helpers.py` — editable; primary BrowserCode extension surface. Divergences expected.
+- `daemon.py`, `admin.py` — protected. Pulled verbatim from upstream. If behavior change is needed, upstream a PR to `browser-use/browser-harness`.
+- `interaction-skills/`, `domain-skills/` — verbatim from upstream. We never edit these.
+- Other files (`run.py`, `pyproject.toml`, `LICENSE`, `README.md`, etc.) — divergence allowed but discouraged.
+
+| File | Section | Direction | Reason |
+|---|---|---|---|
+| `.gitignore` | venv entry | added `.venv/` | smoke-test workflow creates `.venv/` in the harness dir; we ignore it. Upstream uses CWD-level venv so doesn't need this. |
 
 ---
 
 ## Drift checker
 
-Run `scripts/check-upstream.sh` to see whether we're behind either upstream. It reads the latest `To SHA` from each table above and reports "N commits behind" since that point.
+Run `script/check-upstream.sh` to see whether we're behind either upstream. It reads the latest `To SHA` from each §2 table and reports "N commits behind" since that point.
+
+Required remotes:
+
+```sh
+git remote add upstream https://github.com/anomalyco/opencode.git
+git remote add harness  https://github.com/browser-use/browser-harness.git
+```
