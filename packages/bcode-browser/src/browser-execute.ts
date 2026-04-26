@@ -14,7 +14,7 @@
 import { Effect, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import z from "zod"
-import { HARNESS_DIR } from "./harness"
+import { resolveHarnessDir } from "./harness"
 
 const DEFAULT_TIMEOUT_MS = 60 * 1000
 const MAX_TIMEOUT_MS = 10 * 60 * 1000
@@ -62,11 +62,12 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
 
   const execute = (args: Parameters, ctx: ExecuteContext) =>
     Effect.gen(function* () {
+      const harnessDir = yield* Effect.promise(() => resolveHarnessDir())
       const proc = ChildProcess.make(
         "uv",
-        ["run", "--project", HARNESS_DIR, "python", "run.py", "-c", args.python],
+        ["run", "--project", harnessDir, "python", "run.py", "-c", args.python],
         {
-          cwd: HARNESS_DIR,
+          cwd: harnessDir,
           extendEnv: true,
           env: { BU_NAME: ctx.sessionID },
           stdin: "ignore",

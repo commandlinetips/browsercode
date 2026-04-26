@@ -1,19 +1,66 @@
 // Harness directory resolver.
 //
-// The vendored browser-harness lives at `packages/bcode-browser/harness/`,
-// which is a sibling of this `src/` directory. We resolve it from
-// `import.meta.url` so callers don't have to know the workspace layout.
+// Two packaging modes (decisions.md §4.6):
 //
-// In dev mode (running from source) this points at the in-tree harness.
-// For built binaries (Phase C distribution) the build script will embed or
-// copy the harness next to the binary; the resolution there will need to
-// switch on packaging mode. Not built yet — explicit TODO when Phase C lands.
+// 1. Dev mode — running from source under bun. `import.meta.url` resolves to
+//    `packages/bcode-browser/src/harness.ts` on disk, harness lives at the
+//    sibling `../harness/` directory. Used by `bun run --cwd packages/opencode
+//    dev` and tests. Resolution is synchronous and free.
+//
+// 2. Compiled mode — running from a `bun build --compile` binary.
+//    `import.meta.url` lives under `/$bunfs/` (or `B:/~BUN/` on Windows), a
+//    read-only virtual filesystem. uv cannot write `.venv/` there. On first
+//    call we extract the embedded harness files (built into the binary by
+//    `script/embed-harness.ts`) to `~/.cache/bcode/harness/<version>/` and
+//    return that path. The cache is keyed by `OPENCODE_VERSION` so a new
+//    binary version always extracts fresh — no migration logic required.
+//    Concurrent first-callers are deduplicated via an in-process promise;
+//    cross-process races are tolerated because `mkdir -p` and overwriting a
+//    finalized directory only re-runs the extraction (idempotent).
 
+import fs from "fs/promises"
+import os from "os"
 import path from "path"
 import { fileURLToPath } from "url"
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+declare const OPENCODE_VERSION: string
 
-export const HARNESS_DIR = path.resolve(__dirname, "..", "harness")
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const isCompiled = __dirname.startsWith("/$bunfs/") || __dirname.startsWith("B:/~BUN/")
+const DEV_HARNESS_DIR = path.resolve(__dirname, "..", "harness")
+
+const version = typeof OPENCODE_VERSION === "string" ? OPENCODE_VERSION : "local"
+const cachedHarnessDir = path.join(os.homedir(), ".cache", "bcode", "harness", version)
+
+const extractEmbeddedHarness = async (): Promise<string> => {
+  // @ts-expect-error generated at build time
+  const mod = await import("bcode-harness.gen.ts").catch(() => null)
+  if (!mod) throw new Error("bcode-harness.gen.ts not found in compiled binary — was the build script updated?")
+  const fileMap = mod.default as Record<string, string>
+
+  // Marker file makes "fully extracted" atomic. Any partial run leaves no
+  // marker, so the next call re-extracts.
+  const marker = path.join(cachedHarnessDir, ".bcode-extracted")
+  if (await fs.access(marker).then(() => true, () => false)) return cachedHarnessDir
+
+  await fs.mkdir(cachedHarnessDir, { recursive: true })
+  await Promise.all(
+    Object.entries(fileMap).map(async ([rel, bunfsPath]) => {
+      const dest = path.join(cachedHarnessDir, rel)
+      await fs.mkdir(path.dirname(dest), { recursive: true })
+      await Bun.write(dest, Bun.file(bunfsPath))
+    }),
+  )
+  await fs.writeFile(marker, version)
+  return cachedHarnessDir
+}
+
+let extractPromise: Promise<string> | null = null
+
+export const resolveHarnessDir = (): Promise<string> => {
+  if (!isCompiled) return Promise.resolve(DEV_HARNESS_DIR)
+  if (!extractPromise) extractPromise = extractEmbeddedHarness()
+  return extractPromise
+}
 
 export * as Harness from "./harness"
