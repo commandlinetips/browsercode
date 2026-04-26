@@ -15,6 +15,7 @@ process.chdir(dir)
 await import("./generate.ts")
 
 import { Script } from "@opencode-ai/script"
+import { createEmbeddedHarnessBundle } from "../../bcode-browser/script/embed-harness.ts"
 import pkg from "../package.json"
 
 // Load migrations from migration directories
@@ -77,6 +78,7 @@ const createEmbeddedWebUIBundle = async () => {
 }
 
 const embeddedFileMap = skipEmbedWebUi ? null : await createEmbeddedWebUIBundle()
+const embeddedHarnessFileMap = await createEmbeddedHarnessBundle(dir)
 
 const allTargets: {
   os: string
@@ -210,8 +212,17 @@ for (const item of targets) {
       execArgv: [`--user-agent=opencode/${Script.version}`, "--use-system-ca", "--"],
       windows: {},
     },
-    files: embeddedFileMap ? { "opencode-web-ui.gen.ts": embeddedFileMap } : {},
-    entrypoints: ["./src/index.ts", parserWorker, workerPath, ...(embeddedFileMap ? ["opencode-web-ui.gen.ts"] : [])],
+    files: {
+      ...(embeddedFileMap ? { "opencode-web-ui.gen.ts": embeddedFileMap } : {}),
+      "bcode-harness.gen.ts": embeddedHarnessFileMap,
+    },
+    entrypoints: [
+      "./src/index.ts",
+      parserWorker,
+      workerPath,
+      ...(embeddedFileMap ? ["opencode-web-ui.gen.ts"] : []),
+      "bcode-harness.gen.ts",
+    ],
     define: {
       OPENCODE_VERSION: `'${Script.version}'`,
       OPENCODE_MIGRATIONS: JSON.stringify(migrations),
