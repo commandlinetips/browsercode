@@ -8,7 +8,7 @@ See `decisions.md §1c` (three-level model) and `§1d` (this package) in the Bro
 
 | Path | Purpose | Roadmap phase |
 |---|---|---|
-| `harness/` | Vendored `browser-use/browser-harness` | A2 |
+| `harness/` | Vendored `browser-use/browser-harness` | A2 (vendored; tracking via `UPSTREAM.md`) |
 | `src/browser-execute/` | `browser_execute` tool body | A4 |
 | `src/fetch-use/` | `FetchUse.Service` implementation | B1 |
 | `src/cloud/` | Cloud deploy, skillbase, judge clients | D3–D4 |
@@ -17,5 +17,4 @@ Integration into `packages/opencode` (tool registration, service wiring, CLI com
 
 ## Upstream tracking
 
-- `harness/PROVENANCE.md` — source commit SHA + edit log for the vendored harness.
-- Root-level `UPSTREAM.md` — sync log across both upstreams (opencode and harness).
+Single source of truth: root-level `UPSTREAM.md`. Sync log across both upstreams (opencode + harness), modification zones, and per-file harness divergences. Sync runbook: `harness-sync.md` at repo root.

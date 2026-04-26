@@ -84,6 +84,10 @@
     "packages/bcode-browser": {
       "name": "@browser-use/bcode-browser",
       "version": "0.0.0",
+      "dependencies": {
+        "effect": "catalog:",
+        "zod": "catalog:",
+      },
       "devDependencies": {
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
@@ -351,6 +355,7 @@
         "@ai-sdk/vercel": "2.0.39",
         "@ai-sdk/xai": "3.0.82",
         "@aws-sdk/credential-providers": "3.993.0",
+        "@browser-use/bcode-browser": "workspace:*",
         "@clack/prompts": "1.0.0-alpha.1",
         "@effect/opentelemetry": "catalog:",
         "@effect/platform-node": "catalog:",

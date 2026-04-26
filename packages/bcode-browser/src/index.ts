@@ -7,7 +7,7 @@
 // BrowserCode memory docs.
 //
 // Contents (planned, by ROADMAP phase):
-//   harness/               — vendored browser-harness (ROADMAP A2)
+//   harness/               — vendored browser-harness (ROADMAP A2; tracked in root UPSTREAM.md)
 //   src/browser-execute/   — browser_execute tool body (ROADMAP A4)
 //   src/fetch-use/         — FetchUse.Service implementation (ROADMAP B1)
 //   src/cloud/             — cloud deploy, skillbase, judge clients (Phase D)

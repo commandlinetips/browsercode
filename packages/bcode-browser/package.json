@@ -12,6 +12,10 @@
   "exports": {
     "./*": "./src/*.ts"
   },
+  "dependencies": {
+    "effect": "catalog:",
+    "zod": "catalog:"
+  },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:"
