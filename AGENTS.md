@@ -99,3 +99,69 @@ const table = sqliteTable("session", {
 ## Type Checking
 
 - Always run `bun typecheck` from package directories (e.g., `packages/opencode`), never `tsc` directly.
+
+---
+
+## BrowserCode-specific notes
+
+This repo is a fork of `anomalyco/opencode` that adds browser-use integration.
+The opencode style above still applies to all TS code. A few extras:
+
+### Modification zones
+
+See `UPSTREAM.md` for the canonical version. Short form:
+
+- **Green (add freely):** new files, new packages. `packages/bcode-browser/`
+  is the home for BrowserCode-specific code (decisions §1d).
+- **Yellow (touch + document):** edits to `packages/opencode/` source go in
+  `EXCEPTIONS.md` with justification. Every Yellow edit is a future
+  merge-conflict candidate, so keep them surgical.
+- **Red (never touch):** `@opencode-ai/*` package names, `@opencode/...`
+  Effect service IDs, `x-opencode-*` wire headers, `OPENCODE_*` env vars,
+  third-party provider User-Agents.
+
+### Three-level architecture (decisions §1c)
+
+- **Level 1** — pure additions in `packages/bcode-browser/`. No upstream
+  diff. Always preferred.
+- **Level 2** — thin adapters in `packages/opencode/src/tool/` that wrap
+  Level-1 implementations. Small, mostly schema/context translation.
+- **Level 3** — modifications to upstream source. Last resort. Document in
+  `EXCEPTIONS.md`. Always evaluate whether the change could be upstreamed
+  as an extension point first.
+
+### Vendored harness
+
+`packages/bcode-browser/harness/` is vendored from
+`browser-use/browser-harness`. Path-allowlist policy:
+
+- `helpers.py` — editable. Primary BrowserCode extension surface.
+- `daemon.py`, `admin.py` — protected. Pull verbatim. If behavior change
+  is needed, upstream a PR to `browser-use/browser-harness`.
+- `interaction-skills/`, `domain-skills/` — verbatim. Never edit.
+
+Sync workflow lives in `harness-sync.md`.
+
+### Upstream sync workflow
+
+Pull from `anomalyco/opencode`: see `opencode-sync.md`. Pull from
+`browser-use/browser-harness`: see `harness-sync.md`. Both append a row
+to `UPSTREAM.md`'s sync log.
+
+When a sync PR is open, **do not land feature work on `main`** — it
+creates conflicts the sync agent has to redo. Wait for the sync to merge
+first.
+
+### PRs
+
+Use the REST endpoint via `curl`, not `gh pr create` (the project's PAT
+allows the REST mutation but not the GraphQL one used by `gh`). Templates
+live in `opencode-sync.md` and `harness-sync.md`.
+
+### Filtered typecheck
+
+Root `bun run typecheck` uses a turbo filter limiting to the packages we
+ship (`@browser-use/browsercode-core`, `@browser-use/bcode-browser`,
+`@opencode-ai/{shared,plugin,sdk}`). This avoids upstream packages we
+don't build (e.g. `enterprise`, `web`, `console`). The pre-push hook
+runs this filtered command.
