@@ -31,6 +31,11 @@ export type Parameters = z.infer<typeof parameters>
 
 export interface ExecuteContext {
   readonly sessionID: string
+  // Optional progress callback invoked per output chunk (combined stdout+stderr).
+  // Level-2 supplies this to drive TUI streaming via opencode's `ctx.metadata`.
+  // The callback receives the fully accumulated output so far, not just the
+  // delta — simpler for consumers that just want to set "current output".
+  readonly onChunk?: (output: string) => Effect.Effect<void>
 }
 
 export interface ExecuteResult {
@@ -78,10 +83,14 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
       )
       if (spawned === "uv-missing") return { output: UV_MISSING_HINT, exitCode: 127 } satisfies ExecuteResult
 
-      const [output, exitCode] = yield* Effect.all(
-        [Stream.mkString(Stream.decodeText(spawned.all)), spawned.exitCode],
-        { concurrency: 2 },
+      let output = ""
+      const drain = Stream.runForEach(Stream.decodeText(spawned.all), (chunk) =>
+        Effect.gen(function* () {
+          output += chunk
+          if (ctx.onChunk) yield* ctx.onChunk(output)
+        }),
       )
+      const [, exitCode] = yield* Effect.all([drain, spawned.exitCode], { concurrency: 2 })
 
       return { output, exitCode } satisfies ExecuteResult
     }).pipe(
