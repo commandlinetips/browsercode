@@ -72,6 +72,7 @@ Each upstream has its own append-only table. Add a row every time you pull.
 | Date | From SHA | To SHA | By | Notes |
 |---|---|---|---|---|
 | 2026-04-20 | — (initial) | `3e8abac6` | user | Mirror push after fork creation. Tagged `baseline/pre-rename`. |
+| 2026-04-23 | `3e8abac6` | `eb7555d3c` | bcode | Merged upstream release point for v1.14.22 (`sync release versions for v1.14.22` on `dev`). Conflicts: `packages/opencode/package.json` (kept `@browser-use/browsercode-core`, took version bump to 1.14.22), `bun.lock` (took upstream, regenerated via `bun install`). No Yellow-zone files touched by upstream in this window. |
 
 ### browser-use/browser-harness → `packages/bcode-browser/harness/`
 
