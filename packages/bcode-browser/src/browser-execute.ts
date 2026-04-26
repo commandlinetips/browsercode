@@ -41,6 +41,17 @@ export interface ExecuteResult {
 const UV_MISSING_HINT =
   "uv is not installed or not on PATH. Install it once: curl -fsSL https://astral.sh/uv/install.sh | sh"
 
+// Spawn errors flow through effect's PlatformError; ENOENT lives on the wrapped
+// cause's `.code`. Walk the cause chain so we detect it regardless of nesting.
+const isUvMissing = (err: unknown): boolean => {
+  let cur: unknown = err
+  for (let i = 0; i < 5 && cur; i++) {
+    if (typeof cur === "object" && cur !== null && (cur as { code?: string }).code === "ENOENT") return true
+    cur = (cur as { cause?: unknown }).cause
+  }
+  return false
+}
+
 export const make = Effect.fn("BrowserExecute.make")(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 
@@ -57,18 +68,18 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
         },
       )
 
-      const handle = yield* spawner.spawn(proc).pipe(
+      // uv not on PATH (ENOENT) — surface as exit 127 with the install hint
+      // so both the agent (via output) and the user (via TUI) can act on it.
+      // 127 mirrors POSIX "command not found". Other spawn failures rethrow.
+      const spawned = yield* spawner.spawn(proc).pipe(
         Effect.catch((err) =>
-          Effect.fail(
-            new Error(
-              err instanceof Error && /ENOENT/.test(err.message) ? UV_MISSING_HINT : `failed to spawn uv: ${err}`,
-            ),
-          ),
+          isUvMissing(err) ? Effect.succeed("uv-missing" as const) : Effect.fail(new Error(`failed to spawn uv: ${err}`)),
         ),
       )
+      if (spawned === "uv-missing") return { output: UV_MISSING_HINT, exitCode: 127 } satisfies ExecuteResult
 
       const [output, exitCode] = yield* Effect.all(
-        [Stream.mkString(Stream.decodeText(handle.all)), handle.exitCode],
+        [Stream.mkString(Stream.decodeText(spawned.all)), spawned.exitCode],
         { concurrency: 2 },
       )
 
