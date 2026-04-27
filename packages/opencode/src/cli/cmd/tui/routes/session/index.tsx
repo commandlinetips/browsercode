@@ -38,6 +38,7 @@ import type { Tool } from "@/tool"
 import type { ReadTool } from "@/tool/read"
 import type { WriteTool } from "@/tool/write"
 import { BashTool } from "@/tool/bash"
+import type { BrowserExecuteTool } from "@/tool/browser-execute"
 import type { GlobTool } from "@/tool/glob"
 import { TodoWriteTool } from "@/tool/todo"
 import type { GrepTool } from "@/tool/grep"
@@ -1553,6 +1554,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         <Match when={props.part.tool === "bash"}>
           <Bash {...toolprops} />
         </Match>
+        <Match when={props.part.tool === "browser_execute"}>
+          <BrowserExecute {...toolprops} />
+        </Match>
         <Match when={props.part.tool === "glob"}>
           <Glob {...toolprops} />
         </Match>
@@ -1846,6 +1850,58 @@ function Bash(props: ToolProps<typeof BashTool>) {
       <Match when={true}>
         <InlineTool icon="$" pending="Writing command..." complete={props.input.command} part={props.part}>
           {props.input.command}
+        </InlineTool>
+      </Match>
+    </Switch>
+  )
+}
+
+function BrowserExecute(props: ToolProps<typeof BrowserExecuteTool>) {
+  const { theme } = useTheme()
+  const isRunning = createMemo(() => props.part.state.status === "running")
+  const output = createMemo(() => stripAnsi(props.metadata.output?.trim() ?? ""))
+  const [expanded, setExpanded] = createSignal(false)
+  const lines = createMemo(() => output().split("\n"))
+  const overflow = createMemo(() => lines().length > 10)
+  const limited = createMemo(() => {
+    if (expanded() || !overflow()) return output()
+    return [...lines().slice(0, 10), "…"].join("\n")
+  })
+  // Mimic the CPython REPL: ">>> " on the first line, "... " on continuations.
+  // Skip leading/trailing blank lines so a python value that starts with "\n"
+  // doesn't render an empty ">>> " row.
+  const prompted = createMemo(() => {
+    const src = (props.input.python ?? "").replace(/^\n+|\n+$/g, "")
+    if (!src) return ""
+    return src
+      .split("\n")
+      .map((line, i) => (i === 0 ? ">>> " : "... ") + line)
+      .join("\n")
+  })
+
+  return (
+    <Switch>
+      <Match when={props.metadata.output !== undefined}>
+        <BlockTool
+          title="# Browser execute"
+          part={props.part}
+          spinner={isRunning()}
+          onClick={overflow() ? () => setExpanded((prev) => !prev) : undefined}
+        >
+          <box gap={1}>
+            <text fg={theme.text}>{prompted()}</text>
+            <Show when={output()}>
+              <text fg={theme.text}>{limited()}</text>
+            </Show>
+            <Show when={overflow()}>
+              <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
+            </Show>
+          </box>
+        </BlockTool>
+      </Match>
+      <Match when={true}>
+        <InlineTool icon=">" pending="Writing Python..." complete={props.input.python} part={props.part}>
+          {prompted()}
         </InlineTool>
       </Match>
     </Switch>
