@@ -1,6 +1,6 @@
 // Harness directory resolver.
 //
-// Two packaging modes (decisions.md §4.6):
+// Two packaging modes (decisions.md §4.6, §4.8):
 //
 // 1. Dev mode — running from source under bun. `import.meta.url` resolves to
 //    `packages/bcode-browser/src/harness.ts` on disk, harness lives at the
@@ -9,28 +9,42 @@
 //
 // 2. Compiled mode — running from a `bun build --compile` binary.
 //    `import.meta.url` lives under `/$bunfs/` (or `B:/~BUN/` on Windows), a
-//    read-only virtual filesystem. uv cannot write `.venv/` there. On first
-//    call we extract the embedded harness files (built into the binary by
-//    `script/embed-harness.ts`) to `~/.cache/bcode/harness/<version>/` and
-//    return that path. The cache is keyed by `OPENCODE_VERSION` so a new
-//    binary version always extracts fresh — no migration logic required.
-//    Concurrent first-callers are deduplicated via an in-process promise;
-//    cross-process races are tolerated because `mkdir -p` and overwriting a
-//    finalized directory only re-runs the extraction (idempotent).
+//    read-only virtual filesystem. uv cannot write `.venv/` there. We extract
+//    the embedded harness (built into the binary by `script/embed-harness.ts`)
+//    to a single un-versioned directory at `~/.cache/bcode/harness/`.
+//
+//    Per decisions §4.8, the cache is **un-versioned** so agent edits to
+//    `helpers.py` survive binary upgrades. Extraction policy on every launch:
+//    walk the embed map and write each file out, with one exception —
+//    `helpers.py` is preserved if already present. Everything else
+//    (`daemon.py`, `admin.py`, `pyproject.toml`, `run.py`, skills, etc.) is
+//    overwritten unconditionally; the binary is the source of truth for
+//    those, and we want curated skill / daemon / setup updates to land on
+//    upgrade. `helpers.py` is the one Green-zone file (decisions §3.7, §4.5)
+//    where agent learnings accumulate and must outlive upgrades.
+//
+//    Concurrent first-callers are deduplicated via an in-process promise.
+//    Bun.write is atomic per file; cross-process races just result in the
+//    same bytes being written, which is fine.
 
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
 import { fileURLToPath } from "url"
 
-declare const OPENCODE_VERSION: string
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isCompiled = __dirname.startsWith("/$bunfs/") || __dirname.startsWith("B:/~BUN/")
 const DEV_HARNESS_DIR = path.resolve(__dirname, "..", "harness")
+const cachedHarnessDir = path.join(os.homedir(), ".cache", "bcode", "harness")
 
-const version = typeof OPENCODE_VERSION === "string" ? OPENCODE_VERSION : "local"
-const cachedHarnessDir = path.join(os.homedir(), ".cache", "bcode", "harness", version)
+// Files that are agent-editable and must be preserved across binary upgrades.
+// Everything in the embed map that isn't in this set is baseline-overwrite.
+// Per decisions §3.7 / §4.5: only `helpers.py` is Green-zone editable inside
+// the harness. `daemon.py` and `admin.py` are baseline-only (agent-edit
+// protection landed via A6).
+const PRESERVED_PATHS = new Set(["helpers.py"])
+
+const exists = (p: string) => fs.access(p).then(() => true, () => false)
 
 const extractEmbeddedHarness = async (): Promise<string> => {
   // @ts-expect-error generated at build time
@@ -38,20 +52,15 @@ const extractEmbeddedHarness = async (): Promise<string> => {
   if (!mod) throw new Error("bcode-harness.gen.ts not found in compiled binary — was the build script updated?")
   const fileMap = mod.default as Record<string, string>
 
-  // Marker file makes "fully extracted" atomic. Any partial run leaves no
-  // marker, so the next call re-extracts.
-  const marker = path.join(cachedHarnessDir, ".bcode-extracted")
-  if (await fs.access(marker).then(() => true, () => false)) return cachedHarnessDir
-
   await fs.mkdir(cachedHarnessDir, { recursive: true })
   await Promise.all(
     Object.entries(fileMap).map(async ([rel, bunfsPath]) => {
       const dest = path.join(cachedHarnessDir, rel)
+      if (PRESERVED_PATHS.has(rel) && (await exists(dest))) return
       await fs.mkdir(path.dirname(dest), { recursive: true })
       await Bun.write(dest, Bun.file(bunfsPath))
     }),
   )
-  await fs.writeFile(marker, version)
   return cachedHarnessDir
 }
 
