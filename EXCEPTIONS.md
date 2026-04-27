@@ -49,29 +49,78 @@ Subscript convention for "Upstream-able?":
 
 ## Phase F7 — phone-home / branding triage (this PR)
 
-Goal: cut the visible-to-end-user phone-home and branding leaks surfaced by the v0.0.1 binary smoke (PROGRESS.md item 33). Medium-depth — easy items only; deeper sweep deferred.
+Goal: cut visible "opencode" leaks before the user installs locally for the first time. Operating principle: **no users yet, so do the rename clean rather than ship a migration layer**. Anything that would have needed a backwards-compat migration path was simplified to "just use the new name."
 
-| File | Lines | Change | Reason | Upstream-able? |
-|---|---|---|---|---|
-| `packages/opencode/src/global/index.ts` | ~10 lines | XDG app name `opencode` → `bcode`. Added one-time `migrateLegacy()` that copies `~/.config/opencode/` → `~/.config/bcode/` (and same for data + state) on first launch when the new dir doesn't exist and the old does. Cache is regenerated, not migrated. | Brand. Migration preserves user sessions/auth/config from a prior `opencode` install. Legacy dir left in place as rollback. | No. |
-| `packages/shared/src/global.ts` | 3 lines | Same XDG app name change in the parallel Effect-service `Global` (used by the SDK + a few packages). No migration logic here — that's done once in `packages/opencode/src/global/index.ts` at startup. | Brand. Mirror of the above. | No. |
-| `packages/opencode/src/server/routes/control/index.ts` | 3 lines | OpenAPI `info.title` and `info.description`: `"opencode"` → `"bcode"`. | Brand. Visible at `GET /doc`. | No. |
-| `packages/app/index.html` | 1 line | `<title>OpenCode</title>` → `<title>BrowserCode</title>`. | Brand. Visible in the embedded web UI tab. | No. |
-| `packages/opencode/src/config/config.ts` | 2 lines (1 logical) | Background `@opencode-ai/plugin@<our-version>` install: `log.warn(...)` on failure → `log.debug(...)`. | The fetch is expected to fail in BrowserCode binaries (we publish under non-`@opencode-ai/plugin` versions that don't exist on npm). Demoting to debug keeps stderr clean without dropping the diagnostic. | **Maybe** — cleaner long-term: add a `disablePluginAutoInstall` config knob upstream. Not worth the latency now. |
-| `packages/opencode/src/index.ts` | 1 line | Startup log message `Log.Default.info("opencode", ...)` → `"bcode"`. | Brand. Visible in `~/.local/share/bcode/log/`. | No. |
+### Renames
+
+| File | Change | Reason | Upstream-able? |
+|---|---|---|---|
+| `packages/opencode/src/global/index.ts` | XDG app name `opencode` → `bcode`. **No** legacy migration: just resolve to `~/.config/bcode/` etc. Cleaner code than the migration shim added in the previous draft. | Brand. No users on the binary yet — backwards-compat shim is unjustified maintenance debt. | No. |
+| `packages/shared/src/global.ts` | Same XDG app name change in the parallel Effect-service `Global`. | Brand. Mirror. | No. |
+| `packages/opencode/src/server/routes/control/index.ts` | OpenAPI `info.title`/`info.description`: `"opencode"` → `"bcode"`. | Brand. Visible at `GET /doc`. | No. |
+| `packages/app/index.html` | `<title>OpenCode</title>` → `<title>BrowserCode</title>`. | Brand. Embedded web UI. | No. |
+| `packages/opencode/src/storage/db.ts`, `packages/opencode/src/index.ts`, `packages/opencode/test/storage/db.test.ts` | DB filename `opencode.db` → `bcode.db`. | Brand. No users → no migration needed. | No. |
+| `packages/opencode/src/config/config.ts`, `packages/opencode/src/cli/cmd/mcp.ts`, `packages/opencode/src/cli/cmd/tui/config/tui-migrate.ts` | Project config filename `opencode.json`/`opencode.jsonc` → `bcode.json`/`bcode.jsonc`. Global config filename same. | Brand. User-facing convention; users will put `bcode.json` in their projects. | No. |
+| 14 files across `src/config/`, `src/agent/`, `src/cli/cmd/`, `src/session/`, `src/plugin/`, `src/file/`, `src/cli/cmd/tui/` | Project subdir `.opencode/` → `.bcode/` (covers `.opencode/agent/`, `.opencode/command/`, `.opencode/plans/`, `.opencode/themes/`, `.opencode/tui.json`, `.opencode/bin/`, etc.). | Brand. User-facing convention. The 14-file blast radius is the cost of upstream not having an extension point for "what's the project subdir name?" — every path that hardcoded `.opencode` had to flip. | **Maybe** — upstream could expose the project-subdir name as a single constant. Worth proposing if F7 follow-ups grow. |
+| 33 theme `*.json` files in `src/cli/cmd/tui/context/theme/` | `$schema: "https://opencode.ai/theme.json"` → `"https://bcode.sh/theme.json"`. | Brand. The schema doesn't actually exist at our domain yet (gated on bcode.sh landing), but neither does it at opencode.ai for our forked schema; this is just the URL pointer. Mechanical sweep, no logic change. | No. |
+| `packages/opencode/src/config/config.ts` (4 sites) | Auto-injected `$schema: "https://opencode.ai/config.json"` on user config files → `"https://bcode.sh/config.json"`. | Same as above, but for user-level `bcode.json`. | No. |
+| `packages/opencode/src/cli/cmd/tui/config/tui-migrate.ts` | `TUI_SCHEMA_URL` `opencode.ai/tui.json` → `bcode.sh/tui.json`. | Same. | No. |
+| `packages/opencode/src/cli/cmd/uninstall.ts` | "Uninstall OpenCode" banner → "Uninstall BrowserCode". `# opencode` shell comment marker + `.opencode/bin` PATH detection → `# bcode` + `.bcode/bin`. "Thank you for using OpenCode" → "BrowserCode". | Brand. The shell-cleanup logic is wired to whatever string our future install script emits; renaming is correct. | No. |
+
+### LLM provider headers (`packages/opencode/src/provider/provider.ts`, 7 sites)
+
+User question on the prior pass: "would changing to bcode.sh really make much of a difference?" Verdict: **no**, change all of them. Justification:
+
+- `HTTP-Referer`, `X-Title`, `X-Source` are *attribution* headers — used for analytics and (on OpenRouter) for routing to a registered app page. They are not authentication, not part of User-Agent (already `browsercode/...`), and not in the Red-zone provider-trust set.
+- Sending `opencode.ai` from a BrowserCode binary is impersonation: it credits OpenCode's account/analytics for our traffic. That's wrong even if it currently works.
+- `bcode.sh` doesn't resolve yet, but neither does `opencode.ai/[unregistered-bcode]` — neither URL is doing anything useful for a BrowserCode user. Switching to `bcode.sh` is correct labelling now and lights up automatically when we register the domain.
+- OpenRouter rate-limits / featured-app placement attached to OpenCode's referer are *not* something BrowserCode should inherit by impersonation.
+
+| File | Lines | Change | Upstream-able? |
+|---|---|---|---|
+| `provider/provider.ts` | 7 sites (llmgateway, openrouter, nvidia, vercel, zenmux, kilo, cerebras 3rd-party-integration) | `"https://opencode.ai/"` → `"https://bcode.sh/"`; `"opencode"` → `"bcode"` in `X-Title`/`X-Source`/`X-Cerebras-3rd-Party-Integration`. | **Maybe** — upstream could expose attribution headers as a single config block. Tracked for F8. |
+
+### Self-upgrade safety (`packages/opencode/src/installation/index.ts`)
+
+**Critical bug fix.** Upstream's auto-upgrade flow runs on every startup unless `autoupdate: false` is configured. It detects how the binary was installed (npm/brew/scoop/choco/curl), queries the corresponding upstream registry for "latest opencode-ai version", and runs the package-manager upgrade. **On a BrowserCode binary, this would replace `bcode` with `opencode`** — silent, destructive, and would happen on the user's first run of v0.0.2.
+
+| File | Change | Reason | Upstream-able? |
+|---|---|---|---|
+| `installation/index.ts` | Added `BCODE_UPGRADE_DISABLED = true` flag. `latest()` short-circuits to `InstallationVersion` (so the auto-upgrade in `cli/upgrade.ts:8` sees `latest === current` and bails on the existing line 20 check). `upgrade()` short-circuits to `UpgradeFailedError({ stderr: "BrowserCode auto-upgrade is not yet supported. Download from <github releases> or rebuild from source." })`. The npm/brew/scoop/choco lookup logic is left in place as dead code — removing it is a larger refactor and would conflict on every upstream sync. | The auto-upgrade was a foot-gun, not a deferred feature. Disabling it is the only safe shape until BrowserCode ships its own update infrastructure (C1 + a release feed). | No (BrowserCode-specific). |
+| `installation/index.ts` | Same file: also flipped `https://opencode.ai/install` → `https://bcode.sh/install` in `upgradeCurl()`. Dead code path now (the new BCODE_UPGRADE_DISABLED flag returns before this is reached), but `bcode.sh/install` will be the right answer when we re-enable auto-upgrade. | Brand + future-proofing. | No. |
+| `cli/cmd/upgrade.ts` | "opencode is installed to..." messages → "bcode is installed to...". | Brand. | No. |
+
+### MCP OAuth client identity (`packages/opencode/src/mcp/oauth-provider.ts`)
+
+| File | Change | Reason | Upstream-able? |
+|---|---|---|---|
+| `mcp/oauth-provider.ts` | `client_uri: "https://opencode.ai"` → `"https://bcode.sh"`. | This is sent to MCP servers during OAuth client registration as the canonical app URL. Same justification as the provider attribution headers above. | No. |
+
+### Default system prompts (`packages/opencode/src/session/prompt/{default,anthropic}.txt`)
+
+| File | Change | Reason | Upstream-able? |
+|---|---|---|---|
+| `prompt/anthropic.txt`, `prompt/default.txt` | "You are OpenCode/opencode" → "You are BrowserCode". GitHub feedback URL `anomalyco/opencode` → `browser-use/browsercode`. "use WebFetch on opencode.ai/docs" → "point at BrowserCode README; OpenCode features still apply for generic ones". | The prompt instructs the LLM about its own identity and how to answer self-referential questions. A BrowserCode binary should not introduce itself as OpenCode or send users to OpenCode's docs site for BrowserCode-specific questions. The new wording acknowledges the OpenCode lineage explicitly so the agent doesn't get confused when users ask about OpenCode features. | No. |
+
+### Misc small touch-ups
+
+| File | Change | Reason |
+|---|---|---|
+| `packages/opencode/src/cli/cmd/tui/app.tsx` | Open `https://opencode.ai/docs` (TUI keybind) → `https://github.com/browser-use/browsercode`. | Same as default prompt change. |
+| `packages/opencode/src/cli/cmd/tui/feature-plugins/home/tips-view.tsx` | Tip "Run /share to create a public link to your conversation at opencode.ai" → "...requires the share service to be configured". | The opencode.ai share service isn't ours; mentioning it as if it Just Works in BrowserCode is wrong. |
+| `packages/opencode/src/config/config.ts` (2 doc-string sites) | Schema descriptions for `command` / `agent`: extended to mention BrowserCode README first, OpenCode docs as upstream reference. | Brand + lineage acknowledgment. |
 
 ## Deliberately NOT changed in F7 medium pass
 
-These are real OpenCode references but were skipped to keep this PR scoped. Most are low-frequency, behind paid-feature dialogs, or visible only to upstream contributors.
+These remain on the deferred list. Most are gated on product calls or are dead/inactive code paths in the compiled binary.
 
 | Surface | Why deferred |
 |---|---|
-| 33 theme `*.json` files with `$schema: https://opencode.ai/theme.json` | Pure metadata, no runtime effect. Massive diff. Defer to a Phase G theme-schema sweep. |
-| `provider.ts` `HTTP-Referer: https://opencode.ai/` (6 sites) | Sent to LLM providers. Changing affects third-party identification — closer to Red than Yellow. Needs product call (do we want providers to identify us as BrowserCode at the referer level?). |
-| TUI dialog upsells — `opencode.ai/zen`, `opencode.ai/go`, `opencode.ai/auth`, `opencode.ai/docs` | Tied to OpenCode paid services. Rewriting them needs BrowserCode equivalents (we don't have the matching landing pages yet). Phase F7 deeper sweep. |
-| `opencode.ai/install` in `installation/upgrade` curl | Only invoked by `bcode upgrade`. We don't have an install endpoint at `bcode.sh/install` yet (ROADMAP A1 + C4). When we do, swap. |
-| `app.opencode.ai` proxy fallback in `server/routes/ui.ts` | Only used when the embedded UI is missing (it isn't, in compiled binaries). Dead-path for v0.0.x. |
-| Default-prompt mentions of "opencode docs" | Affects agent behavior — needs careful review. Defer. |
-| `mcp/oauth-callback.ts` and `plugin/codex.ts` HTML titles | Only seen during specific OAuth flows. Low frequency. |
-| `opencode.db` data file + `.opencode/` project subdir | Renaming requires per-user migration logic (same shape as the XDG migration but per-project). ROADMAP G1 owns it. |
-| `OPENCODE_*` env vars, `@opencode/...` Effect service IDs, `x-opencode-*` headers, `OPENCODE_TEST_HOME`, `OPENCODE_PURE`, `OPENCODE_PID` | **Red zone.** Wire-level identifiers. Never touch. |
+| `packages/opencode/src/cli/cmd/github.ts` (4 sites: `api.opencode.ai/get_github_app_installation`, `dev.opencode.ai`, `opencode.ai`, `opencode.ai/docs/github`) | The `bcode github` subcommand is wired to the OpenCode GitHub App as a complete feature (PR comment-driven agent runs). BrowserCode doesn't have an equivalent App. Disabling the subcommand or rewiring it is its own ticket. The URLs only resolve when a user runs `bcode github ...`, which they won't until we ship a BrowserCode equivalent. |
+| `packages/opencode/src/cli/cmd/tui/component/dialog-go-upsell.tsx`, `dialog-provider.tsx` | Upsell dialogs for OpenCode's paid tiers (`opencode.ai/go`, `opencode.ai/zen`). Only shown when a user picks "OpenCode" or "OpenCode Go" as a provider in the model picker. Removing the OpenCode provider entirely is a bigger product call (do we leave it as a usable provider for users who have OpenCode keys?). |
+| `packages/opencode/src/cli/cmd/providers.ts` (`opencode.ai/auth`, Cloudflare gateway docs URL) | Same as above — shown when adding OpenCode as a provider. |
+| `packages/opencode/src/server/routes/ui.ts` (`app.opencode.ai` proxy fallback) | Dead path in compiled binaries — only used when the embedded UI bundle is missing. |
+| `packages/opencode/src/plugin/codex.ts`, `mcp/oauth-callback.ts` (HTML `<title>OpenCode - …`) | Visible only during OAuth callback flows that 99% of users won't see. Low priority. |
+| `packages/opencode/src/ide/index.ts` (`sst-dev.opencode` VS Code extension ID) | Real third-party extension, published by SST. We don't have a BrowserCode equivalent yet. |
+| `packages/opencode/src/installation/index.ts` registry-lookup paths (`registry/opencode-ai/*`, `formulae.brew.sh/api/formula/opencode.json`, `api.github.com/repos/anomalyco/opencode/releases/latest`, `npm install -g opencode-ai@*`, etc.) | Dead code now (BCODE_UPGRADE_DISABLED short-circuits before they run). Removing them is a Yellow-zone scope expansion of ~80 lines that doesn't change behavior. Will revisit when BrowserCode has its own update infrastructure. |
+| `OPENCODE_*` env vars, `@opencode/...` Effect service IDs, `x-opencode-*` headers, `--user-agent=opencode/...` for third-party providers | **Red zone.** Wire-level identifiers. Never touch. |
