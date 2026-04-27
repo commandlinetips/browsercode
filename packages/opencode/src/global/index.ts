@@ -5,7 +5,18 @@ import os from "os"
 import { Filesystem } from "../util"
 import { Flock } from "@opencode-ai/shared/util/flock"
 
-const app = "opencode"
+// BrowserCode uses `bcode` as the XDG app name. On first launch we
+// migrate from the legacy `opencode` directories so users who previously
+// ran opencode (or an earlier bcode binary) keep their sessions, auth,
+// and config. The legacy directory is left in place as a rollback path.
+const app = "bcode"
+const legacyApp = "opencode"
+
+async function migrateLegacy(legacy: string, current: string) {
+  if (await Filesystem.exists(current)) return
+  if (!(await Filesystem.exists(legacy))) return
+  await fs.cp(legacy, current, { recursive: true })
+}
 
 const data = path.join(xdgData!, app)
 const cache = path.join(xdgCache!, app)
@@ -24,6 +35,13 @@ export const Path = {
   config,
   state,
 }
+
+await Promise.all([
+  migrateLegacy(path.join(xdgData!, legacyApp), data),
+  migrateLegacy(path.join(xdgConfig!, legacyApp), config),
+  migrateLegacy(path.join(xdgState!, legacyApp), state),
+  // cache is regenerated on demand; not migrated.
+])
 
 // Initialize Flock with global state path
 Flock.setGlobal({ state })
