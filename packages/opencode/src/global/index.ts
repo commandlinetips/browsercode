@@ -5,7 +5,7 @@ import os from "os"
 import { Filesystem } from "../util"
 import { Flock } from "@opencode-ai/shared/util/flock"
 
-const app = "opencode"
+const app = "bcode"
 
 const data = path.join(xdgData!, app)
 const cache = path.join(xdgCache!, app)

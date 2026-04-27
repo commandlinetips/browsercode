@@ -108,14 +108,14 @@ const cli = yargs(args)
     process.env.OPENCODE = "1"
     process.env.OPENCODE_PID = String(process.pid)
 
-    Log.Default.info("opencode", {
+    Log.Default.info("bcode", {
       version: InstallationVersion,
       args: process.argv.slice(2),
       process_role: processMetadata.processRole,
       run_id: processMetadata.runID,
     })
 
-    const marker = path.join(Global.Path.data, "opencode.db")
+    const marker = path.join(Global.Path.data, "bcode.db")
     if (!(await Filesystem.exists(marker))) {
       const tty = process.stderr.isTTY
       process.stderr.write("Performing one time database migration, may take a few minutes..." + EOL)

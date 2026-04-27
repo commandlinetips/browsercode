@@ -108,7 +108,7 @@ export const Info = Schema.Struct({
     description: "Server configuration for opencode serve and web commands",
   }),
   command: Schema.optional(Schema.Record(Schema.String, ConfigCommand.Info)).annotate({
-    description: "Command configuration, see https://opencode.ai/docs/commands",
+    description: "Command configuration. See https://github.com/browser-use/browsercode for BrowserCode docs and https://opencode.ai/docs/commands for the upstream OpenCode reference.",
   }),
   skills: Schema.optional(ConfigSkills.Info).annotate({ description: "Additional skill folder paths" }),
   watcher: Schema.optional(
@@ -177,7 +177,10 @@ export const Info = Schema.Struct({
       }),
       [Schema.Record(Schema.String, AgentRef)],
     ),
-  ).annotate({ description: "Agent configuration, see https://opencode.ai/docs/agents" }),
+  ).annotate({
+    description:
+      "Agent configuration. See https://github.com/browser-use/browsercode for BrowserCode docs and https://opencode.ai/docs/agents for the upstream OpenCode reference.",
+  }),
   provider: Schema.optional(Schema.Record(Schema.String, ConfigProvider.Info)).annotate({
     description: "Custom provider configurations and model overrides",
   }),
@@ -299,7 +302,7 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()("@opencode/Config") {}
 
 function globalConfigFile() {
-  const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((file) =>
+  const candidates = ["bcode.jsonc", "bcode.json", "config.json"].map((file) =>
     path.join(Global.Path.config, file),
   )
   for (const file of candidates) {
@@ -374,8 +377,8 @@ export const layer = Layer.effect(
 
       yield* Effect.promise(() => resolveLoadedPlugins(data, options.path))
       if (!data.$schema) {
-        data.$schema = "https://opencode.ai/config.json"
-        const updated = text.replace(/^\s*\{/, '{\n  "$schema": "https://opencode.ai/config.json",')
+        data.$schema = "https://bcode.sh/config.json"
+        const updated = text.replace(/^\s*\{/, '{\n  "$schema": "https://bcode.sh/config.json",')
         yield* fs.writeFileString(options.path, updated).pipe(Effect.catch(() => Effect.void))
       }
       return data
@@ -392,8 +395,8 @@ export const layer = Layer.effect(
       let result: Info = pipe(
         {},
         mergeDeep(yield* loadFile(path.join(Global.Path.config, "config.json"))),
-        mergeDeep(yield* loadFile(path.join(Global.Path.config, "opencode.json"))),
-        mergeDeep(yield* loadFile(path.join(Global.Path.config, "opencode.jsonc"))),
+        mergeDeep(yield* loadFile(path.join(Global.Path.config, "bcode.json"))),
+        mergeDeep(yield* loadFile(path.join(Global.Path.config, "bcode.jsonc"))),
       )
 
       const legacy = path.join(Global.Path.config, "config")
@@ -403,7 +406,7 @@ export const layer = Layer.effect(
             .then(async (mod) => {
               const { provider, model, ...rest } = mod.default
               if (provider && model) result.model = `${provider}/${model}`
-              result["$schema"] = "https://opencode.ai/config.json"
+              result["$schema"] = "https://bcode.sh/config.json"
               result = mergeDeep(result, rest)
               await fsNode.writeFile(path.join(Global.Path.config, "config.json"), JSON.stringify(result, null, 2))
               await fsNode.unlink(legacy)
@@ -499,7 +502,7 @@ export const layer = Layer.effect(
             }
             const wellknown = (yield* Effect.promise(() => response.json())) as { config?: Record<string, unknown> }
             const remoteConfig = wellknown.config ?? {}
-            if (!remoteConfig.$schema) remoteConfig.$schema = "https://opencode.ai/config.json"
+            if (!remoteConfig.$schema) remoteConfig.$schema = "https://bcode.sh/config.json"
             const source = `${url}/.well-known/opencode`
             const next = yield* loadConfig(JSON.stringify(remoteConfig), {
               dir: path.dirname(source),
@@ -537,8 +540,8 @@ export const layer = Layer.effect(
         const deps: Fiber.Fiber<void, never>[] = []
 
         for (const dir of directories) {
-          if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
-            for (const file of ["opencode.json", "opencode.jsonc"]) {
+          if (dir.endsWith(".bcode") || dir === Flag.OPENCODE_CONFIG_DIR) {
+            for (const file of ["bcode.json", "bcode.jsonc"]) {
               const source = path.join(dir, file)
               log.debug(`loading config from ${source}`)
               yield* merge(source, yield* loadFile(source))
@@ -564,7 +567,11 @@ export const layer = Layer.effect(
               Effect.tap((exit) =>
                 Exit.isFailure(exit)
                   ? Effect.sync(() => {
-                      log.warn("background dependency install failed", { dir, error: String(exit.cause) })
+                      // BrowserCode binaries publish versions that do not
+                      // exist on npm under the @opencode-ai/plugin name, so
+                      // this install is expected to fail. Drop to debug to
+                      // keep stderr clean.
+                      log.debug("background dependency install failed", { dir, error: String(exit.cause) })
                     })
                   : Effect.void,
               ),
@@ -576,7 +583,7 @@ export const layer = Layer.effect(
           result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => ConfigCommand.load(dir)))
           result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.load(dir)))
           result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.loadMode(dir)))
-          // Auto-discovered plugins under `.opencode/plugin(s)` are already local files, so ConfigPlugin.load
+          // Auto-discovered plugins under `.bcode/plugin(s)` are already local files, so ConfigPlugin.load
           // returns normalized Specs and we only need to attach origin metadata here.
           const list = yield* Effect.promise(() => ConfigPlugin.load(dir))
           yield* mergePluginOrigins(dir, list)
@@ -633,7 +640,7 @@ export const layer = Layer.effect(
 
         const managedDir = ConfigManaged.managedConfigDir()
         if (existsSync(managedDir)) {
-          for (const file of ["opencode.json", "opencode.jsonc"]) {
+          for (const file of ["bcode.json", "bcode.jsonc"]) {
             const source = path.join(managedDir, file)
             yield* merge(source, yield* loadFile(source), "global")
           }

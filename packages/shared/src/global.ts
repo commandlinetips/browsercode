@@ -19,7 +19,11 @@ export namespace Global {
   export const layer = Layer.effect(
     Service,
     Effect.gen(function* () {
-      const app = "opencode"
+      // BrowserCode XDG app name. The legacy `opencode` directory is
+      // migrated to this location on first launch by
+      // `packages/opencode/src/global/index.ts`. This service does not
+      // perform the migration itself; it just resolves to the new paths.
+      const app = "bcode"
       const home = process.env.OPENCODE_TEST_HOME ?? os.homedir()
       const data = path.join(xdgData!, app)
       const cache = path.join(xdgCache!, app)

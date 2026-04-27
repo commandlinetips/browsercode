@@ -142,7 +142,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
 
       const upgradeCurl = Effect.fnUntraced(
         function* (target: string) {
-          const response = yield* httpOk.execute(HttpClientRequest.get("https://opencode.ai/install"))
+          const response = yield* httpOk.execute(HttpClientRequest.get("https://bcode.sh/install"))
           const body = yield* response.text
           const bodyBytes = new TextEncoder().encode(body)
           const proc = ChildProcess.make("bash", [], {
@@ -163,7 +163,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
       )
 
       const methodImpl = Effect.fn("Installation.method")(function* () {
-        if (process.execPath.includes(path.join(".opencode", "bin"))) return "curl" as Method
+        if (process.execPath.includes(path.join(".bcode", "bin"))) return "curl" as Method
         if (process.execPath.includes(path.join(".local", "bin"))) return "curl" as Method
         const exec = process.execPath.toLowerCase()
 
@@ -197,7 +197,19 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
         return "unknown" as Method
       })
 
+      // BrowserCode self-upgrade is intentionally disabled. The upstream
+      // `Installation` service queries opencode-ai's npm/brew/scoop/choco
+      // registries and the anomalyco/opencode GitHub releases — running
+      // any of those against a `bcode` binary would replace it with
+      // `opencode`. Instead we report `latest === current` so the
+      // auto-upgrade in `cli/upgrade.ts` is a no-op, and `bcode upgrade`
+      // prints a friendly "not yet supported" error.
+      const BCODE_UPGRADE_DISABLED = true
+
       const latestImpl = Effect.fn("Installation.latest")(function* (installMethod?: Method) {
+        if (BCODE_UPGRADE_DISABLED) {
+          return InstallationVersion
+        }
         const detectedMethod = installMethod || (yield* methodImpl())
 
         if (detectedMethod === "brew") {
@@ -258,6 +270,12 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
       }, Effect.orDie)
 
       const upgradeImpl = Effect.fn("Installation.upgrade")(function* (m: Method, target: string) {
+        if (BCODE_UPGRADE_DISABLED) {
+          return yield* new UpgradeFailedError({
+            stderr:
+              "BrowserCode auto-upgrade is not yet supported. Download a release from https://github.com/browser-use/browsercode/releases or rebuild from source.",
+          })
+        }
         let result: { code: ChildProcessSpawner.ExitCode; stdout: string; stderr: string } | undefined
         switch (m) {
           case "curl":

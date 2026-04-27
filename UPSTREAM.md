@@ -29,7 +29,7 @@ These are contractual with upstream and with provider APIs. Renaming breaks comp
 
 ### Yellow — touch, but log it
 
-Modifications to existing upstream source files are allowed when (a) required by a BrowserCode capability that has no hook-level alternative, and (b) recorded in `EXCEPTIONS.md` with a "can we upstream this?" column (ROADMAP F8).
+Modifications to existing upstream source files are allowed when (a) required by a BrowserCode capability that has no hook-level alternative, and (b) recorded in the maintainer-side `memory/browsercode/EXCEPTIONS.md` (lives outside this repo, with the agent's roadmap and decisions docs) with a "can we upstream this?" column (ROADMAP F8).
 
 Current Yellow modifications (landed in the rebrand commit `866a1a9`):
 

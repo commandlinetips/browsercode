@@ -114,8 +114,10 @@ See `UPSTREAM.md` for the canonical version. Short form:
 - **Green (add freely):** new files, new packages. `packages/bcode-browser/`
   is the home for BrowserCode-specific code (decisions §1d).
 - **Yellow (touch + document):** edits to `packages/opencode/` source go in
-  `EXCEPTIONS.md` with justification. Every Yellow edit is a future
-  merge-conflict candidate, so keep them surgical.
+  the maintainer-side `memory/browsercode/EXCEPTIONS.md` (kept outside
+  this repo with the agent's roadmap/decisions docs) with justification.
+  Every Yellow edit is a future merge-conflict candidate, so keep them
+  surgical.
 - **Red (never touch):** `@opencode-ai/*` package names, `@opencode/...`
   Effect service IDs, `x-opencode-*` wire headers, `OPENCODE_*` env vars,
   third-party provider User-Agents.
@@ -127,8 +129,8 @@ See `UPSTREAM.md` for the canonical version. Short form:
 - **Level 2** — thin adapters in `packages/opencode/src/tool/` that wrap
   Level-1 implementations. Small, mostly schema/context translation.
 - **Level 3** — modifications to upstream source. Last resort. Document in
-  `EXCEPTIONS.md`. Always evaluate whether the change could be upstreamed
-  as an extension point first.
+  the maintainer-side `memory/browsercode/EXCEPTIONS.md`. Always evaluate
+  whether the change could be upstreamed as an extension point first.
 
 ### Vendored harness
 
