@@ -15,6 +15,7 @@ import { Effect, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import z from "zod"
 import { resolveHarnessDir } from "./harness"
+import { uvLocate } from "./uv-locate"
 
 const DEFAULT_TIMEOUT_MS = 60 * 1000
 const MAX_TIMEOUT_MS = 10 * 60 * 1000
@@ -44,7 +45,9 @@ export interface ExecuteResult {
 }
 
 const UV_MISSING_HINT =
-  "uv is not installed or not on PATH. Install it once: curl -fsSL https://astral.sh/uv/install.sh | sh"
+  "uv is not installed or not on PATH. Install it once: curl -fsSL https://astral.sh/uv/install.sh | sh " +
+  "(Windows: irm https://astral.sh/uv/install.ps1 | iex). " +
+  "If you just installed uv, restart your terminal so PATH picks it up."
 
 // Spawn errors flow through effect's PlatformError; ENOENT lives on the wrapped
 // cause's `.code`. Walk the cause chain so we detect it regardless of nesting.
@@ -59,12 +62,14 @@ const isUvMissing = (err: unknown): boolean => {
 
 export const make = Effect.fn("BrowserExecute.make")(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+  const locate = yield* uvLocate
 
   const execute = (args: Parameters, ctx: ExecuteContext) =>
     Effect.gen(function* () {
       const harnessDir = yield* Effect.promise(() => resolveHarnessDir())
+      const uv = yield* locate
       const proc = ChildProcess.make(
-        "uv",
+        uv,
         ["run", "--project", harnessDir, "python", "run.py", "-c", args.python],
         {
           cwd: harnessDir,
