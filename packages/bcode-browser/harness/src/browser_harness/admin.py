@@ -1,15 +1,24 @@
 import json
 import os
 import socket
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
 
+from . import _ipc as ipc
+
 
 def _load_env():
-    p = Path(__file__).parent / ".env"
-    if not p.exists():
-        return
+    repo_root = Path(__file__).resolve().parents[2]
+    workspace = Path(os.environ.get("BH_AGENT_WORKSPACE", repo_root / "agent-workspace")).expanduser()
+    for p in (repo_root / ".env", workspace / ".env"):
+        if not p.exists():
+            continue
+        _load_env_file(p)
+
+
+def _load_env_file(p):
     for line in p.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -23,32 +32,115 @@ _load_env()
 NAME = os.environ.get("BU_NAME", "default")
 BU_API = "https://api.browser-use.com/api/v3"
 GH_RELEASES = "https://api.github.com/repos/browser-use/browser-harness/releases/latest"
-VERSION_CACHE = Path("/tmp/bu-version-cache.json")
+VERSION_CACHE = Path(tempfile.gettempdir()) / "bu-version-cache.json"
 VERSION_CACHE_TTL = 24 * 3600
+DOCTOR_TEXT_LIMIT = 140
 
 
 def _paths(name):
     n = name or NAME
-    return f"/tmp/bu-{n}.sock", f"/tmp/bu-{n}.pid"
+    return ipc.sock_addr(n), str(ipc.pid_path(n))
 
 
 def _log_tail(name):
-    p = f"/tmp/bu-{name or NAME}.log"
     try:
-        return Path(p).read_text().strip().splitlines()[-1]
+        return ipc.log_path(name or NAME).read_text().strip().splitlines()[-1]
     except (FileNotFoundError, IndexError):
         return None
 
 
+def _needs_chrome_remote_debugging_prompt(msg):
+    """True when Chrome needs the inspect-page permission/profile flow."""
+    lower = (msg or "").lower()
+    return (
+        "devtoolsactiveport not found" in lower
+        or "enable chrome://inspect" in lower
+        or "not live yet" in lower
+        or (
+            "ws handshake failed" in lower
+            and (
+                "403" in lower
+                or "opening handshake" in lower
+                or "timed out" in lower
+                or "timeout" in lower
+            )
+        )
+    )
+
+
+def _is_local_chrome_mode(env=None):
+    """True when the daemon discovers a local Chrome instead of a remote CDP WS."""
+    return not (env or {}).get("BU_CDP_WS") and not os.environ.get("BU_CDP_WS")
+
+
 def daemon_alive(name=None):
     try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(1)
-        s.connect(_paths(name)[0])
-        s.close()
-        return True
-    except (FileNotFoundError, ConnectionRefusedError, socket.timeout):
+        c = ipc.connect(name or NAME, timeout=1.0); c.close(); return True
+    except (FileNotFoundError, ConnectionRefusedError, TimeoutError, socket.timeout, OSError):
         return False
+
+
+def _daemon_endpoint_names():
+    pattern = "bu-*.port" if ipc.IS_WINDOWS else "bu-*.sock"
+    suffix = ".port" if ipc.IS_WINDOWS else ".sock"
+    names = []
+    for p in sorted(ipc._TMP.glob(pattern)):
+        name = p.name
+        if not name.startswith("bu-") or not name.endswith(suffix):
+            continue
+        raw = name[3:-len(suffix)]
+        try:
+            ipc._check(raw)
+        except ValueError:
+            continue
+        names.append(raw)
+    return names
+
+
+def _daemon_browser_connection(name):
+    c = None
+    try:
+        c = ipc.connect(name, timeout=1.0)
+        c.sendall(b'{"meta":"connection_status"}\n')
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = c.recv(1 << 16)
+            if not chunk:
+                break
+            data += chunk
+        response = json.loads(data)
+        if "error" in response:
+            return None
+        page = response.get("page")
+        if page:
+            page = {"title": page.get("title") or "(untitled)", "url": page.get("url") or ""}
+        return {"name": name, "page": page}
+    except (FileNotFoundError, ConnectionRefusedError, TimeoutError, socket.timeout, OSError, KeyError, ValueError, json.JSONDecodeError):
+        return None
+    finally:
+        if c:
+            c.close()
+
+
+def browser_connections():
+    """Live browser-harness daemons with healthy CDP browser connections and their attached page."""
+    out = []
+    for name in _daemon_endpoint_names():
+        conn = _daemon_browser_connection(name)
+        if conn:
+            out.append(conn)
+    return out
+
+
+def active_browser_connections():
+    """Count live browser-harness daemons with a healthy CDP browser connection."""
+    return len(browser_connections())
+
+
+def _doctor_short_text(value, limit=None):
+    limit = limit or DOCTOR_TEXT_LIMIT
+    value = str(value)
+    return value if len(value) <= limit else value[:limit - 3] + "..."
 
 
 def ensure_daemon(wait=60.0, name=None, env=None):
@@ -70,13 +162,12 @@ def ensure_daemon(wait=60.0, name=None, env=None):
         restart_daemon(name)
 
     import subprocess, sys
-    local = not (env or {}).get("BU_CDP_WS") and not os.environ.get("BU_CDP_WS")
+    local = _is_local_chrome_mode(env)
     for attempt in (0, 1):
         e = {**os.environ, **({"BU_NAME": name} if name else {}), **(env or {})}
         p = subprocess.Popen(
-            ["uv", "run", "daemon.py"],
-            cwd=os.path.dirname(os.path.abspath(__file__)),
-            env=e, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+            [sys.executable, "-m", "browser_harness.daemon"],
+            env=e, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **ipc.spawn_kwargs(),
         )
         deadline = time.time() + wait
         while time.time() < deadline:
@@ -84,12 +175,12 @@ def ensure_daemon(wait=60.0, name=None, env=None):
             if p.poll() is not None: break
             time.sleep(0.2)
         msg = _log_tail(name) or ""
-        if local and attempt == 0 and ("DevToolsActivePort not found" in msg or "not live yet" in msg or ("WS handshake failed" in msg and "403" in msg)):
+        if local and attempt == 0 and _needs_chrome_remote_debugging_prompt(msg):
             _open_chrome_inspect()
             print("browser-harness: click Allow on chrome://inspect (and tick the checkbox if shown)", file=sys.stderr)
             restart_daemon(name)
             continue
-        raise RuntimeError(msg or f"daemon {name or NAME} didn't come up -- check /tmp/bu-{name or NAME}.log")
+        raise RuntimeError(msg or f"daemon {name or NAME} didn't come up -- check {ipc.log_path(name or NAME)}")
 
 
 def stop_remote_daemon(name="remote"):
@@ -114,14 +205,12 @@ def restart_daemon(name=None):
     ensure_daemon(). The function itself only stops."""
     import signal
 
-    sock, pid_path = _paths(name)
+    _, pid_path = _paths(name)
     try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(5)
-        s.connect(sock)
-        s.sendall(b'{"meta":"shutdown"}\n')
-        s.recv(1024)
-        s.close()
+        c = ipc.connect(name or NAME, timeout=5.0)
+        c.sendall(b'{"meta":"shutdown"}\n')
+        c.recv(1024)
+        c.close()
     except Exception:
         pass
     try:
@@ -133,18 +222,18 @@ def restart_daemon(name=None):
             try:
                 os.kill(pid, 0)
                 time.sleep(0.2)
-            except ProcessLookupError:
+            except (ProcessLookupError, OSError):
                 break
         else:
             try:
                 os.kill(pid, signal.SIGTERM)
-            except ProcessLookupError:
+            except (ProcessLookupError, OSError):
                 pass
-    for f in (sock, pid_path):
-        try:
-            os.unlink(f)
-        except FileNotFoundError:
-            pass
+    ipc.cleanup_endpoint(name or NAME)
+    try:
+        os.unlink(pid_path)
+    except FileNotFoundError:
+        pass
 
 
 def _browser_use(path, method, body=None):
@@ -330,8 +419,10 @@ def _version():
 
 def _repo_dir():
     """Return the repo root if this install is an editable git clone, else None."""
-    p = Path(__file__).resolve().parent
-    return p if (p / ".git").is_dir() else None
+    for p in Path(__file__).resolve().parents:
+        if (p / ".git").is_dir():
+            return p
+    return None
 
 
 def _install_mode():
@@ -468,7 +559,7 @@ def run_setup():
     except RuntimeError as e:
         first_err = str(e)
 
-    needs_inspect = "DevToolsActivePort not found" in first_err or "enable chrome://inspect" in first_err
+    needs_inspect = _is_local_chrome_mode() and _needs_chrome_remote_debugging_prompt(first_err)
     if needs_inspect:
         print("chrome remote-debugging is not enabled on the current profile.")
         print("opening chrome://inspect/#remote-debugging -- in the tab that opens:")
@@ -502,6 +593,7 @@ def run_doctor():
     mode = _install_mode()
     chrome = _chrome_running()
     daemon = daemon_alive()
+    connections = browser_connections()
     profile_use = shutil.which("profile-use") is not None
     api_key = bool(os.environ.get("BROWSER_USE_API_KEY"))
     latest = _latest_release_tag()
@@ -524,6 +616,15 @@ def run_doctor():
         print("  latest release    (could not reach github)")
     row("chrome running", chrome, "" if chrome else "start chrome/edge and rerun `browser-harness --setup`")
     row("daemon alive", daemon, "" if daemon else "run `browser-harness --setup` to attach")
+    row("active browser connections", bool(connections), str(len(connections)))
+    for conn in connections:
+        page = conn.get("page")
+        if page:
+            title = _doctor_short_text(page["title"])
+            url = _doctor_short_text(page["url"])
+            print(f"        {conn['name']} — active page: {title} — {url}")
+        else:
+            print(f"        {conn['name']} — active page: (no real page)")
     row("profile-use installed", profile_use, "" if profile_use else "optional: curl -fsSL https://browser-use.com/profile.sh | sh")
     row("BROWSER_USE_API_KEY set", api_key, "" if api_key else "optional: needed only for cloud browsers / profile sync")
     # Core health = chrome + daemon. Profile-use/api-key are optional.

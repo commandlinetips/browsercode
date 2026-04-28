@@ -14,14 +14,18 @@
 //    to a single un-versioned directory at `~/.cache/bcode/harness/`.
 //
 //    Per decisions §4.8, the cache is **un-versioned** so agent edits to
-//    `helpers.py` survive binary upgrades. Extraction policy on every launch:
-//    walk the embed map and write each file out, with one exception —
-//    `helpers.py` is preserved if already present. Everything else
-//    (`daemon.py`, `admin.py`, `pyproject.toml`, `run.py`, skills, etc.) is
-//    overwritten unconditionally; the binary is the source of truth for
-//    those, and we want curated skill / daemon / setup updates to land on
-//    upgrade. `helpers.py` is the one Green-zone file (decisions §3.7, §4.5)
-//    where agent learnings accumulate and must outlive upgrades.
+//    `agent-workspace/agent_helpers.py` survive binary upgrades. Extraction
+//    policy on every launch: walk the embed map and write each file out, with
+//    one exception — `agent-workspace/agent_helpers.py` is preserved if
+//    already present. Everything else (`src/browser_harness/*.py`,
+//    `pyproject.toml`, skills, etc.) is overwritten unconditionally; the
+//    binary is the source of truth for those, and we want curated skill /
+//    daemon / setup updates to land on upgrade.
+//    `agent-workspace/agent_helpers.py` is the one Green-zone file (decisions
+//    §3.7, §4.5) where agent learnings accumulate and must outlive upgrades.
+//    Upstream moved the agent-editable surface from root `helpers.py` to
+//    `agent-workspace/agent_helpers.py` in PR #229; the core `helpers.py`
+//    inside `src/browser_harness/` is now baseline-overwrite.
 //
 //    Concurrent first-callers are deduplicated via an in-process promise.
 //    Bun.write is atomic per file; cross-process races just result in the
@@ -39,10 +43,10 @@ const cachedHarnessDir = path.join(os.homedir(), ".cache", "bcode", "harness")
 
 // Files that are agent-editable and must be preserved across binary upgrades.
 // Everything in the embed map that isn't in this set is baseline-overwrite.
-// Per decisions §3.7 / §4.5: only `helpers.py` is Green-zone editable inside
-// the harness. `daemon.py` and `admin.py` are baseline-only (agent-edit
-// protection landed via A6).
-const PRESERVED_PATHS = new Set(["helpers.py"])
+// Per decisions §3.7 / §4.5: only `agent-workspace/agent_helpers.py` is
+// Green-zone editable inside the harness. The core `src/browser_harness/`
+// package (daemon, admin, helpers, run, _ipc) is baseline-only.
+const PRESERVED_PATHS = new Set(["agent-workspace/agent_helpers.py"])
 
 const exists = (p: string) => fs.access(p).then(() => true, () => false)
 

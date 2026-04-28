@@ -2,7 +2,12 @@
 //
 // Spawns the vendored harness with a Python snippet:
 //
-//   uv run --project <HARNESS_DIR> python run.py -c "<code>"
+//   uv run --project <HARNESS_DIR> browser-harness -c "<code>"
+//
+// `browser-harness` is the console-script entry point declared in the
+// harness's `pyproject.toml` (since upstream PR #229 moved the package to a
+// `src/browser_harness/` layout). `uv run --project <dir>` resolves the
+// project's venv/dependencies, then dispatches to the entry point.
 //
 // The harness manages the daemon itself via admin.ensure_daemon(). We just
 // pipe stdout+stderr back. BU_NAME is namespaced by sessionID so parallel
@@ -70,7 +75,7 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
       const uv = yield* locate
       const proc = ChildProcess.make(
         uv,
-        ["run", "--project", harnessDir, "python", "run.py", "-c", args.python],
+        ["run", "--project", harnessDir, "browser-harness", "-c", args.python],
         {
           cwd: harnessDir,
           extendEnv: true,
