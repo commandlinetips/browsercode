@@ -6,12 +6,14 @@ imperatively drives the browser using helpers preloaded into the script's namesp
 `wait_for_load`, `page_info`, `http_get`, etc.).
 
 Read `packages/bcode-browser/harness/SKILL.md` for the full helper surface and
-recommended workflow. Read `packages/bcode-browser/harness/helpers.py` for exact
-signatures.
+recommended workflow. Read `packages/bcode-browser/harness/src/browser_harness/helpers.py`
+for exact signatures.
 
 State (CDP session, tab attachments, event buffer) is held by a long-lived daemon
 keyed to your session id, so consecutive `browser_execute` calls share the same
-browser. Editing `helpers.py` between calls takes effect on the very next call.
+browser. Add task-specific helpers to
+`packages/bcode-browser/harness/agent-workspace/agent_helpers.py` between calls;
+they take effect on the very next call.
 
 Coordinate-based interaction is the default — `click(x, y)` rather than selector
 indices. `Input.dispatchMouseEvent` passes through iframes, shadow DOM, and

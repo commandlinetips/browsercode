@@ -62,23 +62,24 @@ This is where the agent earns its keep. For each file changed in `<recorded-sha>
 
 | File category | Action |
 |---|---|
-| Files not in our divergences table (incl. `daemon.py`, `admin.py`, `domain-skills/`, `interaction-skills/`, `pyproject.toml`, `LICENSE`, etc.) | Take upstream verbatim — `cp temp/browser-harness/<path> packages/bcode-browser/harness/<path>`. |
+| Files not in our divergences table (incl. `src/browser_harness/*.py`, `agent-workspace/domain-skills/`, `interaction-skills/`, `tests/`, `pyproject.toml`, `LICENSE`, etc.) | Take upstream verbatim — `cp temp/browser-harness/<path> packages/bcode-browser/harness/<path>`. |
 | Files in our divergences table | Read each upstream hunk. For each, decide: **take** (apply upstream change to our file), **skip** (our divergence wins, ignore upstream change), or **adapt** (rewrite our divergence to coexist with the upstream change). Update the divergences row if its reason or scope shifts. |
 | New upstream files | Copy in. |
 | Files we have but upstream removed | Decide: keep ours (record in divergences) or delete. |
 
 Path-allowlist policy stays in force during sync resolution as well as normal development:
-- `helpers.py` — editable, agent's primary extension surface.
-- `daemon.py`, `admin.py` — protected. Always take upstream verbatim. If upstream regresses, file an issue at `browser-use/browser-harness` and pin to the prior SHA, do not patch locally.
+- `agent-workspace/agent_helpers.py` — editable, agent's primary extension surface (post PR #229).
+- `src/browser_harness/*.py` (`daemon.py`, `admin.py`, `helpers.py`, `run.py`, `_ipc.py`) — protected. Always take upstream verbatim. If upstream regresses, file an issue at `browser-use/browser-harness` and pin to the prior SHA, do not patch locally.
 
 ### 6. Smoke test
 
 ```sh
 cd packages/bcode-browser/harness
-uv run python -c "import run, helpers, daemon, admin; print('imports ok')"
+uv run python -c "from browser_harness import run, helpers, daemon, admin, _ipc; print('imports ok')"
+uv run browser-harness --version
 ```
 
-Verifies the package builds, deps resolve, and all four modules import. We don't try to start the daemon here — that needs a real Chrome and is covered by integration tests, not the sync workflow.
+The first line verifies the package builds, deps resolve, and the core modules import. The second exercises the console-script entry point we invoke from `browser-execute.ts`. We don't try to start the daemon here — that needs a real Chrome and is covered by integration tests, not the sync workflow.
 
 ### 7. Update UPSTREAM.md
 

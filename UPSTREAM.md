@@ -54,7 +54,7 @@ Future Yellow modifications (per ROADMAP):
 
 Every Yellow modification should be evaluated for conversion to a Green extension point via upstream PR. See decisions.md §1c and ROADMAP F8.
 
-The harness has its own narrower zone policy (see §3 below): `helpers.py` is editable, `daemon.py`/`admin.py` are protected, deliberate divergences are logged per-file.
+The harness has its own narrower zone policy (see §3 below): `agent-workspace/agent_helpers.py` is editable, the `src/browser_harness/` core package is protected, deliberate divergences are logged per-file.
 
 ---
 
@@ -83,6 +83,7 @@ Each upstream has its own append-only table. Add a row every time you pull.
 | Date | From SHA | To SHA | By | Notes |
 |---|---|---|---|---|
 | 2026-04-26 | — (initial) | `216a2c9` | bcode | Initial vendor at A2. Verbatim copy of `browser-use/browser-harness@216a2c9`. No divergences yet. |
+| 2026-04-28 | `216a2c9` | `fefca43` | bcode | 41 upstream commits. **Major restructure** (PR #229): src-layout reorg (`*.py` → `src/browser_harness/*.py`), `domain-skills/` → `agent-workspace/domain-skills/`, agent-editable surface moved from root `helpers.py` to `agent-workspace/agent_helpers.py`, new `_ipc.py` for Windows TCP / POSIX AF_UNIX support, tests moved to `tests/{unit,integration}/`. Also: Expedia/Substack/Loom/Gmail domain skills, screenshot max-dim, helpers.switch_tab dict-accept, websockets pin 15.0.1, BU_CDP_URL, doctor improvements, JS eval refactor. Adapted our integration: `browser-execute.ts` invokes `browser-harness` console-script (not `python run.py`); `harness.ts` `PRESERVED_PATHS` updated to `agent-workspace/agent_helpers.py`; smoke test now imports from `browser_harness` package; `browser-execute.txt` prompt updated to point at new helper paths. Divergences touched: none (still just `.gitignore` + `.venv/`). |
 
 ---
 
@@ -90,12 +91,12 @@ Each upstream has its own append-only table. Add a row every time you pull.
 
 Per-file record of where `packages/bcode-browser/harness/` deliberately differs from upstream. Read this *before* a sync diff so intentional differences aren't mistaken for missing features.
 
-Path-allowlist policy (decisions.md §3.7, §4.5):
+Path-allowlist policy (decisions.md §3.7, §4.5; updated for upstream PR #229 src-layout reorg):
 
-- `helpers.py` — editable; primary BrowserCode extension surface. Divergences expected.
-- `daemon.py`, `admin.py` — protected. Pulled verbatim from upstream. If behavior change is needed, upstream a PR to `browser-use/browser-harness`.
-- `interaction-skills/`, `domain-skills/` — verbatim from upstream. We never edit these.
-- Other files (`run.py`, `pyproject.toml`, `LICENSE`, `README.md`, etc.) — divergence allowed but discouraged.
+- `agent-workspace/agent_helpers.py` — editable; primary BrowserCode extension surface. Divergences expected.
+- `src/browser_harness/*.py` (`daemon.py`, `admin.py`, `helpers.py`, `run.py`, `_ipc.py`) — protected. Pulled verbatim from upstream. If behavior change is needed, upstream a PR to `browser-use/browser-harness`.
+- `interaction-skills/`, `agent-workspace/domain-skills/` — verbatim from upstream. We never edit these.
+- Other files (`pyproject.toml`, `LICENSE`, `README.md`, etc.) — divergence allowed but discouraged.
 
 | File | Section | Direction | Reason |
 |---|---|---|---|

@@ -135,12 +135,16 @@ See `UPSTREAM.md` for the canonical version. Short form:
 ### Vendored harness
 
 `packages/bcode-browser/harness/` is vendored from
-`browser-use/browser-harness`. Path-allowlist policy:
+`browser-use/browser-harness`. Path-allowlist policy (post upstream PR #229
+src-layout reorg):
 
-- `helpers.py` — editable. Primary BrowserCode extension surface.
-- `daemon.py`, `admin.py` — protected. Pull verbatim. If behavior change
-  is needed, upstream a PR to `browser-use/browser-harness`.
-- `interaction-skills/`, `domain-skills/` — verbatim. Never edit.
+- `agent-workspace/agent_helpers.py` — editable. Primary BrowserCode
+  extension surface.
+- `src/browser_harness/*.py` (`daemon.py`, `admin.py`, `helpers.py`,
+  `run.py`, `_ipc.py`) — protected. Pull verbatim. If behavior change is
+  needed, upstream a PR to `browser-use/browser-harness`.
+- `interaction-skills/`, `agent-workspace/domain-skills/` — verbatim.
+  Never edit.
 
 Sync workflow lives in `harness-sync.md`.
 
