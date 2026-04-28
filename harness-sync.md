@@ -35,10 +35,13 @@ If the divergences table is empty (initial vendor state), every difference betwe
 ### 3. Check drift
 
 ```sh
-script/check-upstream.sh
+script/check-upstream.sh         # commit count: how many commits behind
+script/check-harness-diff.sh     # file-level diff vs harness/main, with known-divergence filter
 ```
 
-Reports how many commits `harness/main` is ahead of our recorded `To SHA`. Then inspect what changed:
+`check-upstream.sh` reports how many commits `harness/main` is ahead of our recorded `To SHA`. `check-harness-diff.sh` shows per-file differences between our vendored tree and `harness/main`, splitting them into "known divergences (UPSTREAM.md §3)" and "unexpected drift" — the latter should always be either (a) commits we haven't synced yet, or (b) a Yellow-zone modification we forgot to record. Anything else is a bug.
+
+Then inspect what changed:
 
 ```sh
 git fetch harness main
