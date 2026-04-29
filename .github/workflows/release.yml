@@ -68,16 +68,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # `build.ts` uploads via `gh release upload --clobber`, which requires
-          # the release to already exist. Create as a prerelease if missing; the
-          # admin can promote/edit notes after assets land.
+          # the release to exist. --latest makes it visible to releases/latest
+          # (what install.sh queries).
           if ! gh release view "${{ steps.ver.outputs.tag }}" >/dev/null 2>&1; then
-            echo "Creating prerelease ${{ steps.ver.outputs.tag }}"
             gh release create "${{ steps.ver.outputs.tag }}" \
-              --prerelease \
+              --latest \
               --title "${{ steps.ver.outputs.tag }}" \
-              --notes "Automated build for ${{ steps.ver.outputs.tag }}. Notes pending."
-          else
-            echo "Release ${{ steps.ver.outputs.tag }} already exists."
+              --notes "Automated build for ${{ steps.ver.outputs.tag }}."
           fi
 
       - name: Build all targets and upload to release
