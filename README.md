@@ -4,7 +4,15 @@ An AI coding agent that drives real browsers. Forks
 [anomalyco/opencode](https://github.com/anomalyco/opencode) and vendors
 [browser-use/browser-harness](https://github.com/browser-use/browser-harness).
 
-> Pre-release. No installable artifact yet — clone and run from source.
+## Install
+
+```sh
+curl -fsSL https://bcode.sh/install | bash
+```
+
+Installs `bcode` to `~/.bcode/bin`. macOS, Linux, and Windows (Git Bash).
+Also requires `uv` ([install](https://astral.sh/uv/install.sh)) and Chrome
+with `chrome://inspect` enabled (or `BU_CDP_WS` set to a remote CDP endpoint).
 
 ## What's different from opencode
 
@@ -16,16 +24,14 @@ An AI coding agent that drives real browsers. Forks
 
 ## Run from source
 
-Prereqs: `bun >= 1.3.13`, `uv` ([install](https://astral.sh/uv/install.sh)),
-Chrome with `chrome://inspect` enabled (or `BU_CDP_WS` pointing at a remote
-CDP endpoint).
-
 ```sh
 git clone https://github.com/browser-use/browsercode.git
 cd browsercode
 bun install
 bun run --cwd packages/opencode dev
 ```
+
+Needs `bun >= 1.3.13` plus the runtime prereqs above.
 
 The first `browser_execute` call builds a Python venv at
 `packages/bcode-browser/harness/.venv/` (cold ~15s, warm ~50ms after).
@@ -59,6 +65,7 @@ The first `browser_execute` call builds a Python venv at
 - `opencode-sync.md` — runbook for syncing from anomalyco/opencode.
 - `harness-sync.md` — runbook for syncing from browser-use/browser-harness.
 - `AGENTS.md` — code style + maintenance notes for agents working in this repo.
+- `install.sh` — what `bcode.sh/install` serves.
 
 ## License
 
