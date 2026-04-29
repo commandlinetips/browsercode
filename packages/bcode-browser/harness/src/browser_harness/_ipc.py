@@ -8,6 +8,7 @@ IS_WINDOWS = sys.platform == "win32"
 # /tmp on POSIX (gettempdir() returns long /var/folders/... on macOS); tempdir on Windows.
 # Caller picking BH_TMP_DIR is responsible for keeping <dir>/bu-<NAME>.sock under 104 chars.
 _TMP = Path(os.environ.get("BH_TMP_DIR") or (tempfile.gettempdir() if IS_WINDOWS else "/tmp"))
+_TMP.mkdir(parents=True, exist_ok=True)  # caller-supplied BH_TMP_DIR may not exist yet
 _NAME_RE = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
 
 
