@@ -5,6 +5,7 @@
 import { Effect } from "effect"
 import type z from "zod"
 import { BrowserExecute } from "@browser-use/bcode-browser/browser-execute"
+import { Global } from "@/global"
 import * as Tool from "./tool"
 import DESCRIPTION from "./browser-execute.txt"
 
@@ -33,6 +34,12 @@ export const BrowserExecuteTool = Tool.define(
 
           const result = yield* impl.execute(args, {
             sessionID: ctx.sessionID,
+            // Per-session scratch under Global.Path.data (not cache — survives
+            // CACHE_VERSION wipes). Harness writes sock/port/pid/log + screenshots
+            // here. Agent reads screenshots back via the read tool; the agent
+            // permission ruleset (agent.ts) allows <Global.Path.data>/sessions/*
+            // so that read doesn't prompt.
+            bhTmpDir: BrowserExecute.sessionScratchDir(Global.Path.data, ctx.sessionID),
             // Stream chunks to the TUI as they arrive — same pattern as bash.
             onChunk: (output) =>
               ctx.metadata({

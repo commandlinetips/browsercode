@@ -13,14 +13,29 @@
 // pipe stdout+stderr back. BU_NAME is namespaced by sessionID so parallel
 // sub-agents (each with their own session) get isolated daemons + browsers.
 //
+// BH_TMP_DIR points at a per-session scratch dir so sock/port/pid/log + screenshot
+// output land somewhere predictable per session, instead of all sessions sharing
+// /tmp. The Level-2 wrapper supplies the cache root; we own the layout convention.
+//
 // Level 1 per decisions.md §1c — substantial implementation lives here. The
 // Level-2 hook in packages/opencode is a one-line wrapper.
 
+import fs from "fs/promises"
+import path from "path"
 import { Effect, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import z from "zod"
 import { resolveHarnessDir } from "./harness"
 import { uvLocate } from "./uv-locate"
+
+// Canonical per-session scratch dir layout. Caller supplies dataDir
+// (e.g. opencode's Global.Path.data); we own the `sessions/<id>` shape.
+// AF_UNIX sun_path is 104 bytes on macOS — `<dataDir>/sessions/<sessionID>/bu-<sessionID>.sock`
+// must fit. SessionID is `ses_` + 26 chars (30 chars). The literal suffix is
+// `/sessions/` (10) + 30 + `/bu-` (4) + 30 + `.sock` (5) = 79 chars, leaving
+// 25 chars of headroom for dataDir. Typical XDG dataDir is well under that.
+export const sessionScratchDir = (dataDir: string, sessionID: string) =>
+  path.join(dataDir, "sessions", sessionID)
 
 const DEFAULT_TIMEOUT_MS = 60 * 1000
 const MAX_TIMEOUT_MS = 10 * 60 * 1000
@@ -37,6 +52,11 @@ export type Parameters = z.infer<typeof parameters>
 
 export interface ExecuteContext {
   readonly sessionID: string
+  // Per-session scratch dir, passed to the harness as BH_TMP_DIR. The harness
+  // mkdirs it on import, but we mkdir-p here too so failures surface as a
+  // direct effect error rather than a child-process exit. Pre-compute via
+  // sessionScratchDir(dataDir, sessionID).
+  readonly bhTmpDir: string
   // Optional progress callback invoked per output chunk (combined stdout+stderr).
   // Level-2 supplies this to drive TUI streaming via opencode's `ctx.metadata`.
   // The callback receives the fully accumulated output so far, not just the
@@ -72,6 +92,7 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
   const execute = (args: Parameters, ctx: ExecuteContext) =>
     Effect.gen(function* () {
       const harnessDir = yield* Effect.promise(() => resolveHarnessDir())
+      yield* Effect.promise(() => fs.mkdir(ctx.bhTmpDir, { recursive: true }))
       const uv = yield* locate
       const proc = ChildProcess.make(
         uv,
@@ -79,7 +100,7 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
         {
           cwd: harnessDir,
           extendEnv: true,
-          env: { BU_NAME: ctx.sessionID },
+          env: { BU_NAME: ctx.sessionID, BH_TMP_DIR: ctx.bhTmpDir },
           stdin: "ignore",
         },
       )

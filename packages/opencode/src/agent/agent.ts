@@ -82,7 +82,11 @@ export const layer = Layer.effect(
       Effect.fn("Agent.state")(function* (_ctx) {
         const cfg = yield* config.get()
         const skillDirs = yield* skill.dirs()
-        const whitelistedDirs = [Truncate.GLOB, ...skillDirs.map((dir) => path.join(dir, "*"))]
+        // browser_execute writes per-session screenshots/logs under
+        // <Global.Path.data>/sessions/<sessionID>. Whitelist the parent so
+        // the agent can read its own screenshots back without permission prompts.
+        const browserSessionsGlob = path.join(Global.Path.data, "sessions", "*")
+        const whitelistedDirs = [Truncate.GLOB, browserSessionsGlob, ...skillDirs.map((dir) => path.join(dir, "*"))]
 
         const defaults = Permission.fromConfig({
           "*": "allow",
