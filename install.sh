@@ -414,32 +414,51 @@ case $current_shell in
     ;;
 esac
 
-if [[ "$no_modify_path" != "true" ]]; then
-    config_file=""
-    for file in $config_files; do
-        if [[ -f $file ]]; then
-            config_file=$file
-            break
-        fi
-    done
+add_to_user_path_windows() {
+    # User PATH lives in HKCU\Environment. Read it via PowerShell, append our
+    # dir if missing, write it back. Idempotent. Survives across PowerShell,
+    # cmd, and new Git Bash sessions (each shell reads PATH on start).
+    local win_dir
+    win_dir=$(cygpath -w "$INSTALL_DIR" 2>/dev/null || echo "$INSTALL_DIR")
+    powershell.exe -NoProfile -Command "
+        \$d = '$win_dir'
+        \$p = [Environment]::GetEnvironmentVariable('Path','User')
+        if (\$p -split ';' -notcontains \$d) {
+            [Environment]::SetEnvironmentVariable('Path', (\$p.TrimEnd(';') + ';' + \$d), 'User')
+        }" >/dev/null
+    print_message info "${MUTED}Added ${NC}$INSTALL_DIR${MUTED} to user PATH (open a new shell to use)${NC}"
+}
 
-    if [[ -z $config_file ]]; then
-        print_message warning "No config file found for $current_shell. You may need to manually add to PATH:"
-        print_message info "  export PATH=$INSTALL_DIR:\$PATH"
-    elif [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-        case $current_shell in
-            fish)
-                add_to_path "$config_file" "fish_add_path $INSTALL_DIR"
-            ;;
-            zsh|bash|ash|sh)
-                add_to_path "$config_file" "export PATH=$INSTALL_DIR:\$PATH"
-            ;;
-            *)
-                export PATH=$INSTALL_DIR:$PATH
-                print_message warning "Manually add the directory to $config_file (or similar):"
-                print_message info "  export PATH=$INSTALL_DIR:\$PATH"
-            ;;
-        esac
+if [[ "$no_modify_path" != "true" ]]; then
+    if [[ "${os:-}" == "windows" ]]; then
+        add_to_user_path_windows
+    else
+        config_file=""
+        for file in $config_files; do
+            if [[ -f $file ]]; then
+                config_file=$file
+                break
+            fi
+        done
+
+        if [[ -z $config_file ]]; then
+            print_message warning "No config file found for $current_shell. You may need to manually add to PATH:"
+            print_message info "  export PATH=$INSTALL_DIR:\$PATH"
+        elif [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+            case $current_shell in
+                fish)
+                    add_to_path "$config_file" "fish_add_path $INSTALL_DIR"
+                ;;
+                zsh|bash|ash|sh)
+                    add_to_path "$config_file" "export PATH=$INSTALL_DIR:\$PATH"
+                ;;
+                *)
+                    export PATH=$INSTALL_DIR:$PATH
+                    print_message warning "Manually add the directory to $config_file (or similar):"
+                    print_message info "  export PATH=$INSTALL_DIR:\$PATH"
+                ;;
+            esac
+        fi
     fi
 fi
 
@@ -459,10 +478,10 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 echo -e ""
-echo -e "${MUTED}▄⠀                                              ▄     ${NC}"
-echo -e "${MUTED}█▀▀█ █▀▀▄ █▀▀█ █  █ █▀▀▀ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█${NC}"
-echo -e "${MUTED}█  █ █    █  █ █▐▌█ ▀▀▀█ █▀▀▀ █    █    █  █ █  █ █▀▀▀${NC}"
-echo -e "${MUTED}▀▀▀▀ ▀    ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀    ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀${NC}"
+echo -e "${MUTED}▄⠀                                 ${NC}             ▄     "
+echo -e "${MUTED}█▀▀█ █▀▀▄ █▀▀█ █  █ █▀▀▀ █▀▀█ █▀▀▄ ${NC}█▀▀▀ █▀▀█ █▀▀█ █▀▀█"
+echo -e "${MUTED}█░░█ █░░░ █░░█ █▐▌█ ▀▀▀█ █▀▀▀ █░░░ ${NC}█░░░ █░░█ █░░█ █▀▀▀"
+echo -e "${MUTED}▀▀▀▀ ▀    ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀    ${NC}▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀"
 echo -e ""
 echo -e "${MUTED}BrowserCode ${NC}$specific_version${MUTED} installed to ${NC}$INSTALL_DIR/bcode"
 echo -e ""

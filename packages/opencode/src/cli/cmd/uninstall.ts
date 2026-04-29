@@ -211,11 +211,18 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
   }
 
   if (method === "curl" && targets.binary) {
+    const binDir = path.dirname(targets.binary)
+
+    if (process.platform === "win32" && binDir.includes(".bcode")) {
+      // bcode/install.sh adds binDir to user PATH on Windows; remove it here.
+      const ps = `$d='${binDir.replace(/'/g, "''")}'; $p=[Environment]::GetEnvironmentVariable('Path','User'); $n=($p -split ';' | Where-Object { $_ -ne $d }) -join ';'; if ($n -ne $p) { [Environment]::SetEnvironmentVariable('Path', $n, 'User') }`
+      await Process.run(["powershell.exe", "-NoProfile", "-Command", ps], { nothrow: true })
+      prompts.log.step("Removed from user PATH")
+    }
+
     UI.empty()
     prompts.log.message("To finish removing the binary, run:")
     prompts.log.info(`  rm "${targets.binary}"`)
-
-    const binDir = path.dirname(targets.binary)
     if (binDir.includes(".bcode")) {
       prompts.log.info(`  rmdir "${binDir}" 2>/dev/null`)
     }
