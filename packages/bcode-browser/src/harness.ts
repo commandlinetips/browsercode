@@ -37,7 +37,15 @@ import path from "path"
 import { fileURLToPath } from "url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const isCompiled = __dirname.startsWith("/$bunfs/") || __dirname.startsWith("B:/~BUN/")
+// Bun's bunfs root is `/$bunfs/` on POSIX and `B:\~BUN\` on Windows (native
+// separators). Normalize before comparing so the compiled-mode check works on
+// both platforms — without this, the Windows compiled binary falls through to
+// DEV_HARNESS_DIR (which doesn't exist on the user's machine) and every
+// subsequent spawn fails with a misleading uv-missing error.
+const isCompiled = (() => {
+  const d = __dirname.replaceAll("\\", "/")
+  return d.startsWith("/$bunfs/") || d.startsWith("B:/~BUN/")
+})()
 const DEV_HARNESS_DIR = path.resolve(__dirname, "..", "harness")
 const cachedHarnessDir = path.join(os.homedir(), ".cache", "bcode", "harness")
 
