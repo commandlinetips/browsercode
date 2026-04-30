@@ -92,6 +92,13 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
   const execute = (args: Parameters, ctx: ExecuteContext) =>
     Effect.gen(function* () {
       const harnessDir = yield* Effect.promise(() => resolveHarnessDir())
+      // Pre-flight check on harnessDir: spawn ENOENT on a missing cwd surfaces
+      // with `path: "uv"` on Bun/Windows, which is indistinguishable from a
+      // truly-missing uv. Catch it here so the user gets the real cause
+      // instead of a misleading "uv not on PATH" hint.
+      if (!(yield* Effect.promise(() => fs.access(harnessDir).then(() => true, () => false)))) {
+        return yield* Effect.fail(new Error(`harness directory not found at ${harnessDir} — bcode build is broken; please reinstall`))
+      }
       yield* Effect.promise(() => fs.mkdir(ctx.bhTmpDir, { recursive: true }))
       const uv = yield* locate
       const proc = ChildProcess.make(
