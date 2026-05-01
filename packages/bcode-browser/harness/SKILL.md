@@ -5,7 +5,7 @@ description: Direct browser control via CDP. Use when the user wants to automate
 
 # browser-harness
 
-Direct browser control via CDP. For task-specific edits, use `agent-workspace/agent_helpers.py` and `agent-workspace/domain-skills/`. For setup, install, or connection problems, read install.md.
+Direct browser control via CDP. For task-specific edits, use `agent-workspace/agent_helpers.py`. For setup, install, or connection problems, read install.md.
 
 ## Usage
 
@@ -62,9 +62,7 @@ Profiles (cookies-only login state) live in interaction-skills/profile-sync.md �
 
 ## Search first
 
-Search `agent-workspace/domain-skills/` first for the domain you are working on before inventing a new approach.
-
-Only if you start struggling with a specific mechanic while navigating, look in interaction-skills/ for helpers. The available interaction skills are:
+If you start struggling with a specific mechanic while navigating, look in interaction-skills/ for helpers. The available interaction skills are:
 - cookies.md
 - cross-origin-iframes.md
 - dialogs.md
@@ -81,44 +79,6 @@ Only if you start struggling with a specific mechanic while navigating, look in 
 - tabs.md
 - uploads.md
 - viewport.md
-
-Useful commands:
-
-```bash
-rg --files agent-workspace/domain-skills
-rg -n "tiktok|upload" agent-workspace/domain-skills
-```
-
-## Always contribute back
-
-If you learned anything non-obvious about how a site works, open a PR to `agent-workspace/domain-skills/<site>/` before you finish. Default to contributing. The harness gets better only because agents file what they learn. If figuring something out cost you a few steps, the next run should not pay the same tax.
-
-Examples of what's worth a PR:
-
-- A private API the page calls (XHR/fetch endpoint, request shape, auth) — often 10× faster than DOM scraping.
-- A stable selector that beats the obvious one, or an obfuscated CSS-module class to avoid.
-- A framework quirk — "the dropdown is a React combobox that only commits on Escape", "this Vue list only renders rows inside its own scroll container, so scrollIntoView on the row doesn't work — you have to scroll the container".
-- A URL pattern — direct route, required query params (?lang=en, ?th=1), a variant that skips a loader.
-- A wait that wait_for_load() misses, with the reason.
-- A trap — stale drafts, legacy IDs that now return null, unicode quirks, beforeunload dialogs, CAPTCHA surfaces.
-
-### What a domain skill should capture
-
-The *durable* shape of the site — the map, not the diary. Focus on what the next agent on this site needs to know before it starts:
-
-- URL patterns and query params.
-- Private APIs and their payload shape.
-- Stable selectors (data-*, aria-*, role, semantic classes).
-- Site structure — containers, items per page, framework, where state lives.
-- Framework/interaction quirks unique to this site.
-- Waits and the reasons they're needed.
-- Traps and the selectors that *don't* work.
-
-### Do not write
-
-- Raw pixel coordinates. They break on viewport, zoom, and layout changes. Describe how to *locate* the target (selector, scrollIntoView, aria-label, visible text) — never where it happened to be on your screen.
-- Run narration or step-by-step of the specific task you just did.
-- Secrets, cookies, session tokens, user-specific state. `agent-workspace/domain-skills/` is shared and public.
 
 ## What actually works
 
@@ -158,4 +118,3 @@ The *durable* shape of the site — the map, not the diary. Focus on what the ne
 ## Interaction notes
 
 - interaction-skills/ holds reusable UI mechanics such as dialogs, tabs, dropdowns, iframes, and uploads.
-- `agent-workspace/domain-skills/` holds site-specific workflows and should be updated when you discover reusable patterns for a website.

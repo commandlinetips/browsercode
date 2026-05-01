@@ -91,20 +91,34 @@ Each upstream has its own append-only table. Add a row every time you pull.
 
 ---
 
-## 3. Harness divergences
+## 3. Harness divergences and excluded paths
 
-Per-file record of where `packages/bcode-browser/harness/` deliberately differs from upstream. Read this *before* a sync diff so intentional differences aren't mistaken for missing features.
+Per-file record of where `packages/bcode-browser/harness/` deliberately differs from upstream, plus the list of paths excluded from the vendored tree entirely. Read this *before* a sync diff so intentional differences aren't mistaken for missing features and excluded paths aren't accidentally re-imported.
 
 Path-allowlist policy (decisions.md §3.7, §4.5; updated for upstream PR #229 src-layout reorg):
 
 - `agent-workspace/agent_helpers.py` — editable; primary BrowserCode extension surface. Divergences expected.
 - `src/browser_harness/*.py` (`daemon.py`, `admin.py`, `helpers.py`, `run.py`, `_ipc.py`) — protected. Pulled verbatim from upstream. If behavior change is needed, upstream a PR to `browser-use/browser-harness`.
-- `interaction-skills/`, `agent-workspace/domain-skills/` — verbatim from upstream. We never edit these.
+- `interaction-skills/` — verbatim from upstream. We never edit these.
+- `(agent-workspace/)?domain-skills/` — **excluded.** See "Excluded paths" below.
 - Other files (`pyproject.toml`, `LICENSE`, `README.md`, etc.) — divergence allowed but discouraged.
+
+### Excluded paths
+
+Upstream paths the vendored tree treats as if they don't exist. Sync agents skip them; the diff checker filters them out. The runtime guard in `helpers.py` (`if d.is_dir():` in `goto_url`) means absence is a clean no-op.
+
+| Pattern | Reason |
+|---|---|
+| `(agent-workspace/)?domain-skills/**` | User-contributed site recipes. Quality, maintenance, and prompt-injection concerns. Browsercode (cloud-first, performance-focused) curates its own skills server-side; OSS users get the harness without bundled recipes. Both upstream paths covered: post-PR-#229 `agent-workspace/domain-skills/` and the legacy/PR-#247 top-level `domain-skills/`. The exclusion is enforced in three places that all reference this row: `script/check-harness-diff.sh` (`IGNORED_PATHS_REGEX`), `harness-sync.md` step 5 ("Excluded paths" row), and the absence of these directories from the vendored tree. |
+
+### Modified files
 
 | File | Section | Direction | Reason |
 |---|---|---|---|
 | `.gitignore` | venv entry | added `.venv/` | smoke-test workflow creates `.venv/` in the harness dir; we ignore it. Upstream uses CWD-level venv so doesn't need this. |
+| `packages/bcode-browser/harness/SKILL.md` | domain-skills mentions | removed | domain-skills excluded from vendored tree; references would point at non-existent paths. **Expect ongoing drift on sync** — take upstream hunks for non-domain-skills content; skip any new domain-skills mentions upstream introduces. |
+| `packages/bcode-browser/harness/README.md` | domain-skills mentions | removed | same. **Expect ongoing drift on sync.** |
+| `packages/bcode-browser/harness/install.md` | domain-skills mention | removed | same. **Expect ongoing drift on sync** (small surface, low cost). |
 
 ---
 

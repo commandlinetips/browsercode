@@ -37,20 +37,37 @@ UPSTREAM_SHORT="$(git rev-parse --short harness/main)"
 # mutates the active index relative to the current branch, which is wrong.
 git archive --format=tar "$UPSTREAM_HEAD" | tar -xf - -C "$TMP"
 
-# Known-divergence filter:
-#   - .gitignore (we add .venv/ — see UPSTREAM.md §3 divergences table)
-# Build artifacts the vendored side might generate during smoke tests:
-#   - uv.lock, .venv/, __pycache__/, *.egg-info/, *.pyc
-# These are gitignored on our side, but `diff -rq` doesn't read .gitignore.
-# Files in the divergences table go in EXPECTED; everything else is drift.
+# Three filter classes (applied in order):
+#
+#   IGNORED_PATHS_REGEX — paths excluded from our vendored tree by policy.
+#     Sync agents skip these; the diff checker pretends they don't exist.
+#     See UPSTREAM.md §3 "Excluded paths" for the source of truth.
+#       - domain-skills/  and  agent-workspace/domain-skills/
+#         (user-contributed site recipes; quality + prompt-injection concerns)
+#
+#   NOISE_REGEX        — build artifacts the vendored side may generate
+#     during smoke tests but are gitignored on our side. `diff -rq` doesn't
+#     read .gitignore, so we filter here:
+#       - uv.lock, .venv/, __pycache__/, *.egg-info/, *.pyc, .cache
+#
+#   EXPECTED_REGEX     — files we deliberately modify, logged in
+#     UPSTREAM.md §3 divergences table:
+#       - .gitignore (adds .venv/)
+#
+# Ordering matters: IGNORED first (treat as if absent), then NOISE
+# (build dirt), then EXPECTED vs UNEXPECTED split for the remainder.
+# Match in either `diff -rq` line shape:
+#   "Files .../domain-skills/foo and .../domain-skills/foo differ"
+#   "Only in .../agent-workspace: domain-skills"
+#   "Only in /tmp/...: domain-skills"
+IGNORED_PATHS_REGEX='(/domain-skills(/|$| )|: domain-skills($| ))'
+NOISE_REGEX='(uv\.lock|\.venv|__pycache__|\.egg-info|\.pyc|\.cache|\.pytest_cache)'
 EXPECTED_REGEX='/(\.gitignore)( |$)'
-# `diff -rq` emits two line shapes:
-#   "Files A and B differ"
-#   "Only in <dir>: <name>"
-# Match noise in either shape.
-NOISE_REGEX='(uv\.lock|\.venv|__pycache__|\.egg-info|\.pyc|\.cache)'
 
-DIFF_OUT="$(diff -rq "$VENDORED/" "$TMP/" 2>&1 | grep -Ev "$NOISE_REGEX" || true)"
+DIFF_OUT="$(diff -rq "$VENDORED/" "$TMP/" 2>&1 \
+  | grep -Ev "$IGNORED_PATHS_REGEX" \
+  | grep -Ev "$NOISE_REGEX" \
+  || true)"
 
 echo "=== vendored vs harness/main ($UPSTREAM_SHORT) ==="
 echo
@@ -86,6 +103,7 @@ fi
 # matched the noise regex.
 echo "Line stats vs upstream (added on our side, removed on our side):"
 diff -ruN \
+  --exclude='domain-skills' \
   --exclude='.venv' --exclude='__pycache__' --exclude='*.egg-info' \
   --exclude='*.pyc' --exclude='uv.lock' --exclude='.cache' \
   "$TMP" "$VENDORED" 2>/dev/null \
