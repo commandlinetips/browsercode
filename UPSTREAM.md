@@ -116,9 +116,12 @@ Upstream paths the vendored tree treats as if they don't exist. Sync agents skip
 | File | Section | Direction | Reason |
 |---|---|---|---|
 | `.gitignore` | venv entry | added `.venv/` | smoke-test workflow creates `.venv/` in the harness dir; we ignore it. Upstream uses CWD-level venv so doesn't need this. |
-| `packages/bcode-browser/harness/SKILL.md` | domain-skills mentions | removed | domain-skills excluded from vendored tree; references would point at non-existent paths. **Expect ongoing drift on sync** — take upstream hunks for non-domain-skills content; skip any new domain-skills mentions upstream introduces. |
-| `packages/bcode-browser/harness/README.md` | domain-skills mentions | removed | same. **Expect ongoing drift on sync.** |
-| `packages/bcode-browser/harness/install.md` | domain-skills mention | removed | same. **Expect ongoing drift on sync** (small surface, low cost). |
+
+The vendored harness's `SKILL.md`, `README.md`, and `install.md` reference `agent-workspace/domain-skills/`, but we keep them verbatim from upstream. Rationale:
+
+- `README.md` and `install.md` are not referenced by any browsercode prompt or TS code — the agent never reads them. Their content is dead weight in the extracted cache, not agent-visible.
+- `SKILL.md` is referenced by `packages/opencode/src/tool/browser-execute.txt` today, but the long-term plan (see ROADMAP) is to replace that pointer with a browsercode-owned prompt file, making vendored `SKILL.md` inert too.
+- Trimming these files would generate per-sync drift forever for zero agent-behavior benefit. Keeping them verbatim costs nothing and keeps future syncs mechanical.
 
 ---
 

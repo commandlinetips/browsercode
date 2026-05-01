@@ -5,7 +5,7 @@ description: Install and bootstrap browser-harness into the current agent, then 
 
 # browser-harness install
 
-Use this file only for first-time install, reconnect, or cold-start browser bootstrap. For day-to-day browser work, read `SKILL.md`. Task-specific edits belong in `agent-workspace/agent_helpers.py`.
+Use this file only for first-time install, reconnect, or cold-start browser bootstrap. For day-to-day browser work, read `SKILL.md`. Task-specific edits belong in `agent-workspace/agent_helpers.py` and `agent-workspace/domain-skills/`.
 
 ## Install prompt contract
 
