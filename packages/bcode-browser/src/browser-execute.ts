@@ -22,9 +22,8 @@
 
 import fs from "fs/promises"
 import path from "path"
-import { Effect, Stream } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
-import z from "zod"
 import { resolveHarnessDir } from "./harness"
 import { uvLocate } from "./uv-locate"
 
@@ -40,15 +39,14 @@ export const sessionScratchDir = (dataDir: string, sessionID: string) =>
 const DEFAULT_TIMEOUT_MS = 60 * 1000
 const MAX_TIMEOUT_MS = 10 * 60 * 1000
 
-export const parameters = z.object({
-  python: z.string().describe("Python source to execute against the browser harness."),
-  timeout: z
-    .number()
-    .describe(`Timeout in milliseconds. Default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}.`)
-    .optional(),
+export const parameters = Schema.Struct({
+  python: Schema.String.annotate({ description: "Python source to execute against the browser harness." }),
+  timeout: Schema.optional(Schema.Number).annotate({
+    description: `Timeout in milliseconds. Default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}.`,
+  }),
 })
 
-export type Parameters = z.infer<typeof parameters>
+export type Parameters = Schema.Schema.Type<typeof parameters>
 
 export interface ExecuteContext {
   readonly sessionID: string
