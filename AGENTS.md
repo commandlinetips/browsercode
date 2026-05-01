@@ -143,8 +143,9 @@ src-layout reorg):
 - `src/browser_harness/*.py` (`daemon.py`, `admin.py`, `helpers.py`,
   `run.py`, `_ipc.py`) — protected. Pull verbatim. If behavior change is
   needed, upstream a PR to `browser-use/browser-harness`.
-- `interaction-skills/`, `agent-workspace/domain-skills/` — verbatim.
-  Never edit.
+- `interaction-skills/` — verbatim. Never edit.
+- `(agent-workspace/)?domain-skills/` — **excluded** from vendored tree.
+  Sync agents skip these paths; see UPSTREAM.md §3 "Excluded paths".
 
 Sync workflow lives in `harness-sync.md`.
 

@@ -28,7 +28,7 @@ git pull origin main
 Two things to read before touching anything:
 
 - **`UPSTREAM.md`** — the latest `To SHA` row under `### browser-use/browser-harness`. That is the last commit we synced to. It is the only source of truth for "what version is vendored."
-- **`UPSTREAM.md` §3 Harness divergences** — the table of files where we deliberately differ from upstream, with reasons. Read this *before* the diff so you know which differences are intentional and not "missing features."
+- **`UPSTREAM.md` §3 Harness divergences and excluded paths** — the table of files where we deliberately differ from upstream, plus the list of paths excluded from the vendored tree entirely. Read both *before* the diff so you know which differences are intentional and not "missing features," and which paths to skip outright.
 
 If the divergences table is empty (initial vendor state), every difference between us and upstream is unintentional drift; flag any in the PR.
 
@@ -65,14 +65,16 @@ This is where the agent earns its keep. For each file changed in `<recorded-sha>
 
 | File category | Action |
 |---|---|
-| Files not in our divergences table (incl. `src/browser_harness/*.py`, `agent-workspace/domain-skills/`, `interaction-skills/`, `tests/`, `pyproject.toml`, `LICENSE`, etc.) | Take upstream verbatim — `cp temp/browser-harness/<path> packages/bcode-browser/harness/<path>`. |
+| **Excluded paths** (`(agent-workspace/)?domain-skills/...`) | **Skip entirely.** Never copy in, never resurrect. See UPSTREAM.md §3 "Excluded paths". `script/check-harness-diff.sh` filters these out automatically. |
+| Files not in our divergences table (incl. `src/browser_harness/*.py`, `interaction-skills/`, `tests/`, `pyproject.toml`, `LICENSE`, etc.) | Take upstream verbatim — `cp temp/browser-harness/<path> packages/bcode-browser/harness/<path>`. |
 | Files in our divergences table | Read each upstream hunk. For each, decide: **take** (apply upstream change to our file), **skip** (our divergence wins, ignore upstream change), or **adapt** (rewrite our divergence to coexist with the upstream change). Update the divergences row if its reason or scope shifts. |
-| New upstream files | Copy in. |
+| New upstream files | Copy in (unless under an excluded path). |
 | Files we have but upstream removed | Decide: keep ours (record in divergences) or delete. |
 
 Path-allowlist policy stays in force during sync resolution as well as normal development:
 - `agent-workspace/agent_helpers.py` — editable, agent's primary extension surface (post PR #229).
 - `src/browser_harness/*.py` (`daemon.py`, `admin.py`, `helpers.py`, `run.py`, `_ipc.py`) — protected. Always take upstream verbatim. If upstream regresses, file an issue at `browser-use/browser-harness` and pin to the prior SHA, do not patch locally.
+- `(agent-workspace/)?domain-skills/` — **excluded.** Treat as if not in the upstream tree. Quality + prompt-injection concerns; user-contributed site recipes do not ship with browsercode. The runtime guard in `helpers.py` (`if d.is_dir():`) means this is a clean no-op.
 
 ### 6. Smoke test
 
