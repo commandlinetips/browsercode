@@ -67,6 +67,11 @@ The first `browser_execute` call builds a Python venv at
 - `AGENTS.md` — code style + maintenance notes for agents working in this repo.
 - `install.sh` — what `bcode.sh/install` serves.
 
+## Telemetry
+
+BrowserCode sends anonymous usage traces to help improve the project. To opt
+out, set `DO_NOT_TRACK=1` in your environment.
+
 ## License
 
 MIT. See `LICENSE`.
