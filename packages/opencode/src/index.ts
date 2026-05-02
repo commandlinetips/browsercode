@@ -1,8 +1,8 @@
-// Telemetry import sits above all others so the key gate runs before any
-// downstream code reads LMNR_PROJECT_API_KEY. ESM hoists imports, but the
-// `applyTelemetryKey()` call is the first non-import statement to execute.
-import { Telemetry } from "@browser-use/bcode-browser/telemetry"
-Telemetry.applyTelemetryKey()
+// Telemetry key injection runs as an import side effect of this module,
+// before any subsequent import is evaluated. Keep this as the FIRST import
+// so the LMNR_PROJECT_API_KEY env var is settled before any downstream
+// module-load code reads it.
+import "@browser-use/bcode-browser/telemetry"
 
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
