@@ -51,6 +51,7 @@ console.log(`Loaded ${migrations.length} migrations`)
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
+const sourcemapsFlag = process.argv.includes("--sourcemaps")
 const plugin = createSolidTransformPlugin()
 const skipEmbedWebUi = process.argv.includes("--skip-embed-web-ui")
 
@@ -204,6 +205,7 @@ for (const item of targets) {
     external: ["node-gyp"],
     format: "esm",
     minify: true,
+    sourcemap: sourcemapsFlag ? "linked" : "none",
     splitting: true,
     compile: {
       autoloadBunfig: false,

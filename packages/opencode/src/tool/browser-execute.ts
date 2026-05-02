@@ -2,10 +2,9 @@
 //
 // Adapter only. Substantive logic lives in @browser-use/bcode-browser/browser-execute.
 
-import { Effect } from "effect"
-import type z from "zod"
+import { Effect, Schema } from "effect"
 import { BrowserExecute } from "@browser-use/bcode-browser/browser-execute"
-import { Global } from "@/global"
+import { Global } from "@opencode-ai/core/global"
 import * as Tool from "./tool"
 import DESCRIPTION from "./browser-execute.txt"
 
@@ -20,7 +19,7 @@ export const BrowserExecuteTool = Tool.define(
     return {
       description: DESCRIPTION,
       parameters: impl.parameters,
-      execute: (args: z.infer<typeof impl.parameters>, ctx: Tool.Context) =>
+      execute: (args: Schema.Schema.Type<typeof impl.parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
           // Permission gate. Default agent ruleset has `"*": "allow"` so this
           // auto-allows; users can opt out via opencode.json — either
@@ -34,9 +33,9 @@ export const BrowserExecuteTool = Tool.define(
 
           const result = yield* impl.execute(args, {
             sessionID: ctx.sessionID,
-            // Per-session scratch under Global.Path.data (not cache — survives
-            // CACHE_VERSION wipes). Harness writes sock/port/pid/log + screenshots
-            // here. Agent reads screenshots back via the read tool; the agent
+            // Per-session scratch under Global.Path.data (persistent state,
+            // not cache). Harness writes sock/port/pid/log + screenshots here.
+            // Agent reads screenshots back via the read tool; the agent
             // permission ruleset (agent.ts) allows <Global.Path.data>/sessions/*
             // so that read doesn't prompt.
             bhTmpDir: BrowserExecute.sessionScratchDir(Global.Path.data, ctx.sessionID),
