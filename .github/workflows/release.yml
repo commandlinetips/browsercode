@@ -84,6 +84,10 @@ jobs:
           OPENCODE_CHANNEL: latest
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Embedded into the binary by build.ts via Bun `define`. Read at
+          # runtime in @browser-use/bcode-browser/telemetry, gated by
+          # DO_NOT_TRACK and any user-supplied LMNR_PROJECT_API_KEY.
+          BCODE_DEFAULT_LMNR_KEY: ${{ secrets.LMNR_PROJECT_API_KEY_OSS }}
         run: |
           ./packages/opencode/script/build.ts
 

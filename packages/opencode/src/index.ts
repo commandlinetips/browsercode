@@ -1,3 +1,9 @@
+// Telemetry key injection runs as an import side effect of this module,
+// before any subsequent import is evaluated. Keep this as the FIRST import
+// so the LMNR_PROJECT_API_KEY env var is settled before any downstream
+// module-load code reads it.
+import "@browser-use/bcode-browser/telemetry"
+
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
