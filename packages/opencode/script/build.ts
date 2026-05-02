@@ -235,6 +235,10 @@ for (const item of targets) {
       OPENCODE_WORKER_PATH: workerPath,
       OPENCODE_CHANNEL: `'${Script.channel}'`,
       OPENCODE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
+      // Build-time-embedded Laminar project key. Populated by release CI from
+      // the LMNR_PROJECT_API_KEY_OSS secret; empty for local builds. Runtime
+      // use is gated in @browser-use/bcode-browser/src/telemetry.ts.
+      BCODE_DEFAULT_LMNR_KEY: JSON.stringify(process.env.BCODE_DEFAULT_LMNR_KEY ?? ""),
     },
   })
 

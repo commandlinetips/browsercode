@@ -1,3 +1,9 @@
+// Telemetry import sits above all others so the key gate runs before any
+// downstream code reads LMNR_PROJECT_API_KEY. ESM hoists imports, but the
+// `applyTelemetryKey()` call is the first non-import statement to execute.
+import { Telemetry } from "@browser-use/bcode-browser/telemetry"
+Telemetry.applyTelemetryKey()
+
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
