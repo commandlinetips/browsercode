@@ -17,7 +17,6 @@ from .admin import (
     print_update_banner,
     restart_daemon,
     run_doctor,
-    run_setup,
     run_update,
     start_remote_daemon,
     stop_remote_daemon,
@@ -40,7 +39,6 @@ Helpers are pre-imported. The daemon auto-starts and connects to the running bro
 Commands:
   browser-harness --version        print the installed version
   browser-harness --doctor         diagnose install, daemon, and browser state
-  browser-harness --setup          interactively attach to your running browser
   browser-harness --update [-y]    pull the latest version (agents: pass -y)
   browser-harness --reload         stop the daemon so next call picks up code changes
 """
@@ -68,8 +66,6 @@ def main():
         return
     if args and args[0] == "--doctor":
         sys.exit(run_doctor())
-    if args and args[0] == "--setup":
-        sys.exit(run_setup())
     if args and args[0] == "--update":
         yes = any(a in {"-y", "--yes"} for a in args[1:])
         sys.exit(run_update(yes=yes))
@@ -85,7 +81,15 @@ def main():
     if len(args) < 2:
         sys.exit("Usage: browser-harness -c \"print(page_info())\"")
     print_update_banner()
-    if not daemon_alive() and not _local_chrome_listening() and os.environ.get("BROWSER_USE_API_KEY"):
+    # Auto-bootstrap a cloud browser is opt-in via BU_AUTOSPAWN — BROWSER_USE_API_KEY alone
+    # is not enough, since the key is commonly set for unrelated reasons (profile sync,
+    # cloud API calls, parent agents managing their own session).
+    if (
+        not daemon_alive()
+        and not _local_chrome_listening()
+        and os.environ.get("BROWSER_USE_API_KEY")
+        and os.environ.get("BU_AUTOSPAWN")
+    ):
         start_remote_daemon(NAME)
     ensure_daemon()
     exec(args[1], globals())
