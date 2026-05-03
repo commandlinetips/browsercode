@@ -165,13 +165,14 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildPro
             return yield* new UpgradeFailedError({
               stderr:
                 "Auto-upgrade currently supports only curl-installed bcode. " +
-                "Reinstall via https://bcode.sh/install or download a release " +
-                "from https://github.com/browser-use/browsercode/releases.",
+                "Reinstall with:\n  curl -fsSL https://bcode.sh/install | bash",
             })
           }
           const upgradeResult = yield* upgradeCurl(target)
           if (upgradeResult.code !== 0) {
-            return yield* new UpgradeFailedError({ stderr: upgradeResult.stderr })
+            return yield* new UpgradeFailedError({
+              stderr: `${upgradeResult.stderr.trimEnd()}\n\nReinstall with:\n  curl -fsSL https://bcode.sh/install | bash`,
+            })
           }
           log.info("upgraded", { method: m, target, stdout: upgradeResult.stdout, stderr: upgradeResult.stderr })
           yield* text([process.execPath, "--version"])
