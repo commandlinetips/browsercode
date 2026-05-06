@@ -34,6 +34,13 @@ export const LaminarPlugin: Plugin = ({ client }) => {
     process.env.LMNR_GRPC_PORT,
     baseUrl === "https://api.lmnr.ai" ? DEFAULT_GRPC_PORT_LMNR : DEFAULT_GRPC_PORT_GENERIC,
   )
+  // When set, every "turn" span this plugin starts is parented under the
+  // given Laminar span context. Used by external evaluation harnesses that
+  // spawn bcode as a subprocess and want the agent's traces to nest under
+  // their own evaluation span (one trace per task, judge + agent siblings).
+  // Format: JSON serialization of LaminarSpanContext (snake_case or camelCase
+  // keys both accepted by parseLaminarSpanContext in span.ts).
+  const parentSpanContext = process.env.LMNR_PARENT_SPAN_CONTEXT
 
   const log = (level: "debug" | "info" | "warn" | "error", message: string) => {
     client.app
@@ -118,6 +125,7 @@ export const LaminarPlugin: Plugin = ({ client }) => {
       const span = startTurnSpan({
         name: "turn",
         sessionId: sessionID,
+        parentSpanContext,
         input: {
           sessionID,
           agent,
