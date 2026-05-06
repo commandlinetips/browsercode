@@ -15,7 +15,7 @@ const preview = (text: string) =>
 export const BrowserExecuteTool = Tool.define(
   "browser_execute",
   Effect.gen(function* () {
-    const impl = yield* BrowserExecute.make()
+    const impl = yield* BrowserExecute.make(Global.Path.data)
     return {
       description: DESCRIPTION,
       parameters: impl.parameters,

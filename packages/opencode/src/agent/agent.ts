@@ -15,6 +15,7 @@ import PROMPT_TITLE from "./prompt/title.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
+import { Harness } from "@browser-use/bcode-browser/harness"
 import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
@@ -85,9 +86,18 @@ export const layer = Layer.effect(
         // <Global.Path.data>/sessions/<sessionID>. Whitelist the parent so
         // the agent can read its own screenshots back without permission prompts.
         const browserSessionsGlob = path.join(Global.Path.data, "sessions", "*")
+        // Vendored browser-harness in compiled-binary mode is extracted to
+        // <Global.Path.data>/harness/ (see packages/bcode-browser/src/harness.ts).
+        // The agent is meant to read SKILL.md, helpers.py, interaction-skills/,
+        // and edit agent-workspace/agent_helpers.py + domain-skills/ as part of
+        // normal browser work. Whitelist the whole tree so none of that prompts.
+        // In dev mode the harness lives inside the worktree, so this glob is a
+        // no-op there.
+        const harnessGlob = path.join(Harness.harnessDir(Global.Path.data), "*")
         const whitelistedDirs = [
           Truncate.GLOB,
           browserSessionsGlob,
+          harnessGlob,
           path.join(Global.Path.tmp, "*"),
           ...skillDirs.map((dir) => path.join(dir, "*")),
         ]

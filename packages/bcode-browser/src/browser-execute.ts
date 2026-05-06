@@ -83,13 +83,16 @@ const isUvMissing = (err: unknown): boolean => {
   return false
 }
 
-export const make = Effect.fn("BrowserExecute.make")(function* () {
+// dataDir is opencode's XDG_DATA_HOME for bcode (~/.local/share/bcode/). The
+// harness lives at <dataDir>/harness/. We resolve eagerly at make-time so the
+// extraction (compiled mode) happens before the agent reads SKILL.md.
+export const make = Effect.fn("BrowserExecute.make")(function* (dataDir: string) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const locate = yield* uvLocate
+  const harnessDir = yield* Effect.promise(() => resolveHarnessDir(dataDir))
 
   const execute = (args: Parameters, ctx: ExecuteContext) =>
     Effect.gen(function* () {
-      const harnessDir = yield* Effect.promise(() => resolveHarnessDir())
       // Pre-flight check on harnessDir: spawn ENOENT on a missing cwd surfaces
       // with `path: "uv"` on Bun/Windows, which is indistinguishable from a
       // truly-missing uv. Catch it here so the user gets the real cause
