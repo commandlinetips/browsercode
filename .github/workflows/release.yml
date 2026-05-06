@@ -69,10 +69,22 @@ jobs:
         # (not into main); main moved on without it and the bcode-laminar
         # package had to be re-landed in PR #39. This guard fails the release
         # before any binaries are uploaded.
+        #
+        # Resolves the tag name to a commit SHA via `git rev-parse` rather than
+        # using `$GITHUB_SHA`. For `push: tags` the two are equivalent, but for
+        # `workflow_dispatch` with `inputs.tag` `$GITHUB_SHA` is the dispatch
+        # ref's HEAD (typically main), not the selected tag's commit — using it
+        # would let a feature-branch tag pass the check trivially.
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
           git fetch origin main --depth=1
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::Tag ${GITHUB_REF#refs/tags/} points at $GITHUB_SHA which is not reachable from origin/main. Release tags must be cut from main."
+          TAG_SHA=$(git rev-parse -q --verify "refs/tags/${TAG}^{commit}") || {
+            echo "::error::Tag ${TAG} does not exist locally. Create the tag on a main commit first (e.g. \`gh release create ${TAG} --target main\`), then re-run."
+            exit 1
+          }
+          if ! git merge-base --is-ancestor "$TAG_SHA" origin/main; then
+            echo "::error::Tag ${TAG} points at $TAG_SHA which is not reachable from origin/main. Release tags must be cut from main."
             exit 1
           fi
 
