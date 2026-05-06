@@ -94,10 +94,14 @@ export const layer = Layer.effect(
         // In dev mode the harness lives inside the worktree, so this glob is a
         // no-op there.
         const harnessGlob = path.join(Harness.harnessDir(Global.Path.data), "*")
+        // Past-version snapshots taken at upgrade time. Read-only browsing for
+        // the agent when migrating its own helpers across upgrades.
+        const harnessArchiveGlob = path.join(Harness.harnessArchiveDir(Global.Path.data), "*")
         const whitelistedDirs = [
           Truncate.GLOB,
           browserSessionsGlob,
           harnessGlob,
+          harnessArchiveGlob,
           path.join(Global.Path.tmp, "*"),
           ...skillDirs.map((dir) => path.join(dir, "*")),
         ]

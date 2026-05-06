@@ -19,10 +19,13 @@
 //    A content-hash sentinel at `<harness>/.bcode-build` records the embed
 //    bundle that produced the on-disk tree. On session start we compare it to
 //    the bundle hash and skip extraction when they match — warm launches cost
-//    one stat. Mismatch (binary upgrade) re-extracts every embed file except
-//    anything under `agent-workspace/` (the Green-zone subtree — decisions
-//    §3.7, §4.5: agent_helpers.py and any agent-authored files like
-//    domain-skills/<host>/*.md persist across upgrades). The core
+//    one stat. Mismatch (binary upgrade) snapshots the active tree to
+//    `<dataDir>/harness-archive/<old-buildHash>/` (excluding `.venv/` and
+//    `__pycache__/`) so the agent can read the old skills + helpers when
+//    migrating its own customizations, then re-extracts every embed file
+//    except anything under `agent-workspace/` (the Green-zone subtree —
+//    decisions §3.7, §4.5: agent_helpers.py and any agent-authored files
+//    like domain-skills/<host>/*.md persist across upgrades). The core
 //    `src/browser_harness/` package and shipped skill files are
 //    baseline-overwrite.
 //
@@ -65,6 +68,15 @@ const PRESERVED_PREFIX = "agent-workspace/"
 // uses `resolveHarnessDir`.
 export const harnessDir = (dataDir: string) => path.join(dataDir, "harness")
 
+// Where past-version snapshots live. Each subdir is named for the buildHash
+// of the harness it was extracted from. Read-only after creation.
+export const harnessArchiveDir = (dataDir: string) => path.join(dataDir, "harness-archive")
+
+// Skipped during archive copies — regenerable (.venv) or junk (__pycache__).
+// Match by basename at any depth so nested __pycache__/ inside src/ is also
+// excluded.
+const ARCHIVE_EXCLUDE = new Set([".venv", "__pycache__"])
+
 const exists = (p: string) => fs.access(p).then(() => true, () => false)
 
 const readSentinel = async (dir: string) => {
@@ -84,6 +96,16 @@ const migrateLegacyIfPresent = async (target: string) => {
   }
 }
 
+const archiveExistingHarness = async (dataDir: string, target: string, oldHash: string) => {
+  const archiveTarget = path.join(harnessArchiveDir(dataDir), oldHash)
+  if (await exists(archiveTarget)) return // already archived (re-entry); nothing to do
+  await fs.mkdir(harnessArchiveDir(dataDir), { recursive: true })
+  await fs.cp(target, archiveTarget, {
+    recursive: true,
+    filter: (src) => !ARCHIVE_EXCLUDE.has(path.basename(src)),
+  })
+}
+
 const extractEmbeddedHarness = async (dataDir: string): Promise<string> => {
   const target = harnessDir(dataDir)
   await migrateLegacyIfPresent(target)
@@ -94,7 +116,9 @@ const extractEmbeddedHarness = async (dataDir: string): Promise<string> => {
   const fileMap = mod.default as Record<string, string>
   const buildHash = mod.buildHash as string
 
-  if ((await readSentinel(target)) === buildHash) return target
+  const existing = await readSentinel(target)
+  if (existing === buildHash) return target
+  if (existing) await archiveExistingHarness(dataDir, target, existing)
 
   await fs.mkdir(target, { recursive: true })
   await Promise.all(
