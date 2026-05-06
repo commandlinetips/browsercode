@@ -145,11 +145,12 @@ export const resolveHarnessDir = (dataDir: string): Promise<string> => {
   if (cached) return cached
   const fresh = extractEmbeddedHarness(dataDir)
   extractCache.set(dataDir, fresh)
-  // Evict on rejection so a transient failure (disk full, file lock, etc.)
-  // doesn't poison the cache for the rest of the process. The .catch is a
-  // sibling consumer, not a transformation — `fresh` itself still rejects
-  // for the original caller and any concurrent waiters.
-  fresh.catch(() => extractCache.delete(dataDir))
+  // Evict on rejection so a transient failure (FS hiccup, partial write) doesn't
+  // permanently brick subsequent calls. The `===` guard avoids clobbering a
+  // retry that started after the failure but before this handler fired.
+  fresh.catch(() => {
+    if (extractCache.get(dataDir) === fresh) extractCache.delete(dataDir)
+  })
   return fresh
 }
 
