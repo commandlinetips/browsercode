@@ -1,32 +1,7 @@
-Execute Python code against a connected web browser via the BrowserCode harness.
+Execute Python against a connected web browser via the BrowserCode harness.
 
-This is the single tool for all browser interaction. The agent writes Python that
-imperatively drives the browser using helpers preloaded into the script's namespace
-(`goto_url`, `click_at_xy`, `type_text`, `capture_screenshot`, `js`, `cdp`,
-`new_tab`, `switch_tab`, `ensure_real_tab`, `wait_for_load`, `page_info`,
-`http_get`, etc.).
+Use this tool whenever the task requires driving a real browser — automation, scraping, end-to-end testing, or interactive exploration. The harness attaches to the user's running Chrome (local) or a Browser Use cloud browser (remote). A session-scoped daemon holds the CDP connection so consecutive calls share the same browser and tabs.
 
-Read `packages/bcode-browser/harness/SKILL.md` for the full helper surface and
-recommended workflow. Read `packages/bcode-browser/harness/src/browser_harness/helpers.py`
-for exact signatures.
+Before the first `browser_execute` call of a session, you MUST read `packages/bcode-browser/harness/SKILL.md`. It defines the helper surface, the screenshot-driven workflow, remote-browser setup, and gotchas — none of that is repeated here.
 
-State (CDP session, tab attachments, event buffer) is held by a long-lived daemon
-keyed to your session id, so consecutive `browser_execute` calls share the same
-browser. Add task-specific helpers to
-`packages/bcode-browser/harness/agent-workspace/agent_helpers.py` between calls;
-they take effect on the very next call.
-
-Coordinate-based interaction is the default — `click_at_xy(x, y)` rather than
-selector indices. `Input.dispatchMouseEvent` passes through iframes, shadow DOM,
-and cross-origin at the compositor level.
-
-For first navigation use `new_tab(url)` (or `ensure_real_tab(); goto_url(url)`),
-not bare `goto_url` — the latter clobbers whatever tab the user is on.
-
-Output is whatever the script writes to stdout/stderr. Wrap multi-step flows in
-one call when possible — that's the design.
-
-Example:
-  new_tab("https://example.com")
-  wait_for_load()
-  print(page_info())
+Optional: read `packages/bcode-browser/harness/src/browser_harness/helpers.py` when you need an exact signature that SKILL.md does not show.
