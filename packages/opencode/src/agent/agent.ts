@@ -15,6 +15,7 @@ import PROMPT_TITLE from "./prompt/title.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
+import { Harness } from "@browser-use/bcode-browser/harness"
 import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
@@ -85,9 +86,33 @@ export const layer = Layer.effect(
         // <Global.Path.data>/sessions/<sessionID>. Whitelist the parent so
         // the agent can read its own screenshots back without permission prompts.
         const browserSessionsGlob = path.join(Global.Path.data, "sessions", "*")
+        // Vendored browser-harness in compiled-binary mode is extracted to
+        // <Global.Path.data>/harness/ (see packages/bcode-browser/src/harness.ts).
+        // The agent is meant to read SKILL.md, helpers.py, interaction-skills/,
+        // and edit agent-workspace/agent_helpers.py + domain-skills/ as part of
+        // normal browser work. Whitelist the whole tree so none of that prompts.
+        // In dev mode the harness lives inside the worktree, so this glob is a
+        // no-op there.
+        const harnessGlob = path.join(Harness.harnessDir(Global.Path.data), "*")
+        // Past-version snapshots taken at upgrade time. Read-only history for
+        // the agent when migrating its own helpers across upgrades — silent
+        // reads via the external_directory whitelist, but edits/writes/
+        // apply_patch are denied below to keep snapshots immutable. Bash-level
+        // mutations are still possible but the agent has no prompt-driven
+        // reason to delete the dir.
+        const harnessArchiveGlob = path.join(Harness.harnessArchiveDir(Global.Path.data), "*")
+        // edit/write/apply_patch all `ctx.ask({ permission: "edit", ... })`
+        // with a path that's `path.relative(worktree, filepath)` — which for
+        // an out-of-worktree archive file looks like
+        // `../../.local/share/bcode/harness-archive/<hash>/foo.py`. A leading
+        // `*` (greedy `.*`) absorbs that prefix; the dir name itself is the
+        // anchor.
+        const harnessArchiveEditDeny = "*/harness-archive/*"
         const whitelistedDirs = [
           Truncate.GLOB,
           browserSessionsGlob,
+          harnessGlob,
+          harnessArchiveGlob,
           path.join(Global.Path.tmp, "*"),
           ...skillDirs.map((dir) => path.join(dir, "*")),
         ]
@@ -99,6 +124,9 @@ export const layer = Layer.effect(
             "*": "ask",
             ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
           },
+          // Covers `edit`, `write`, `apply_patch` — all three tools route
+          // through the `edit` permission key (see EDIT_TOOLS in permission/).
+          edit: { [harnessArchiveEditDeny]: "deny" },
           question: "deny",
           plan_enter: "deny",
           plan_exit: "deny",

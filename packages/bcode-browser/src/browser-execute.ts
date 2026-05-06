@@ -13,28 +13,38 @@
 // pipe stdout+stderr back. BU_NAME is namespaced by sessionID so parallel
 // sub-agents (each with their own session) get isolated daemons + browsers.
 //
-// BH_TMP_DIR points at a per-session scratch dir so sock/port/pid/log + screenshot
-// output land somewhere predictable per session, instead of all sessions sharing
-// /tmp. The Level-2 wrapper supplies the cache root; we own the layout convention.
+// Two per-session dirs, separated by lifetime + path-length sensitivity:
+//   BH_TMP_DIR    — screenshots, debug overlays, daemon log. Persistent under
+//                   <dataDir>/sessions/<sid>/. Long path is fine; the cloud
+//                   UI / read tool finds artifacts here.
+//   BH_RUNTIME_DIR — sock, port, pid. Volatile under <runtimeRoot>/bcode/<sid>/.
+//                   Path-length budgeted on macOS (AF_UNIX sun_path = 104).
 //
 // Level 1 per decisions.md §1c — substantial implementation lives here. The
 // Level-2 hook in packages/opencode is a one-line wrapper.
 
 import fs from "fs/promises"
+import os from "os"
 import path from "path"
 import { Effect, Schema, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
-import { resolveHarnessDir } from "./harness"
+import { harnessArchiveDir, resolveHarnessDir } from "./harness"
 import { uvLocate } from "./uv-locate"
 
-// Canonical per-session scratch dir layout. Caller supplies dataDir
-// (e.g. opencode's Global.Path.data); we own the `sessions/<id>` shape.
-// AF_UNIX sun_path is 104 bytes on macOS — `<dataDir>/sessions/<sessionID>/bu-<sessionID>.sock`
-// must fit. SessionID is `ses_` + 26 chars (30 chars). The literal suffix is
-// `/sessions/` (10) + 30 + `/bu-` (4) + 30 + `.sock` (5) = 79 chars, leaving
-// 25 chars of headroom for dataDir. Typical XDG dataDir is well under that.
+// Per-session persistent scratch under <dataDir>/sessions/<sid>/. Holds
+// screenshots, debug overlays, daemon log. Caller supplies dataDir
+// (e.g. opencode's Global.Path.data).
 export const sessionScratchDir = (dataDir: string, sessionID: string) =>
   path.join(dataDir, "sessions", sessionID)
+
+// Per-session volatile runtime dir under <runtimeRoot>/bcode/<sid>/. Holds
+// AF_UNIX sock + port file + pid. macOS sun_path is 104 bytes:
+// `/tmp/bcode/ses_<26ch>/bu.sock` is 50 chars — well within budget.
+// On Windows the daemon listens on TCP so the path doesn't need to be short,
+// but using os.tmpdir() keeps the layout consistent.
+const RUNTIME_ROOT = process.platform === "win32" ? os.tmpdir() : "/tmp"
+export const sessionRuntimeDir = (sessionID: string) =>
+  path.join(RUNTIME_ROOT, "bcode", sessionID)
 
 const DEFAULT_TIMEOUT_MS = 60 * 1000
 const MAX_TIMEOUT_MS = 10 * 60 * 1000
@@ -50,11 +60,12 @@ export type Parameters = Schema.Schema.Type<typeof parameters>
 
 export interface ExecuteContext {
   readonly sessionID: string
-  // Per-session scratch dir, passed to the harness as BH_TMP_DIR. The harness
-  // mkdirs it on import, but we mkdir-p here too so failures surface as a
-  // direct effect error rather than a child-process exit. Pre-compute via
-  // sessionScratchDir(dataDir, sessionID).
-  readonly bhTmpDir: string
+  // BH_TMP_DIR. Persistent per-session dir for screenshots/log. Pre-compute
+  // via sessionScratchDir(dataDir, sessionID).
+  readonly bhScratchDir: string
+  // BH_RUNTIME_DIR. Volatile short-path per-session dir for sock/port/pid.
+  // Pre-compute via sessionRuntimeDir(sessionID).
+  readonly bhRuntimeDir: string
   // Optional progress callback invoked per output chunk (combined stdout+stderr).
   // Level-2 supplies this to drive TUI streaming via opencode's `ctx.metadata`.
   // The callback receives the fully accumulated output so far, not just the
@@ -83,13 +94,16 @@ const isUvMissing = (err: unknown): boolean => {
   return false
 }
 
-export const make = Effect.fn("BrowserExecute.make")(function* () {
+// dataDir is opencode's XDG_DATA_HOME for bcode (~/.local/share/bcode/). The
+// harness lives at <dataDir>/harness/. We resolve eagerly at make-time so the
+// extraction (compiled mode) happens before the agent reads SKILL.md.
+export const make = Effect.fn("BrowserExecute.make")(function* (dataDir: string) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const locate = yield* uvLocate
+  const harnessDir = yield* Effect.promise(() => resolveHarnessDir(dataDir))
 
   const execute = (args: Parameters, ctx: ExecuteContext) =>
     Effect.gen(function* () {
-      const harnessDir = yield* Effect.promise(() => resolveHarnessDir())
       // Pre-flight check on harnessDir: spawn ENOENT on a missing cwd surfaces
       // with `path: "uv"` on Bun/Windows, which is indistinguishable from a
       // truly-missing uv. Catch it here so the user gets the real cause
@@ -97,7 +111,8 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
       if (!(yield* Effect.promise(() => fs.access(harnessDir).then(() => true, () => false)))) {
         return yield* Effect.fail(new Error(`harness directory not found at ${harnessDir} — bcode build is broken; please reinstall`))
       }
-      yield* Effect.promise(() => fs.mkdir(ctx.bhTmpDir, { recursive: true }))
+      yield* Effect.promise(() => fs.mkdir(ctx.bhScratchDir, { recursive: true }))
+      yield* Effect.promise(() => fs.mkdir(ctx.bhRuntimeDir, { recursive: true }))
       const uv = yield* locate
       const proc = ChildProcess.make(
         uv,
@@ -105,7 +120,11 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
         {
           cwd: harnessDir,
           extendEnv: true,
-          env: { BU_NAME: ctx.sessionID, BH_TMP_DIR: ctx.bhTmpDir },
+          env: {
+            BU_NAME: ctx.sessionID,
+            BH_TMP_DIR: ctx.bhScratchDir,
+            BH_RUNTIME_DIR: ctx.bhRuntimeDir,
+          },
           stdin: "ignore",
         },
       )
@@ -138,7 +157,7 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
       }),
     )
 
-  return { parameters, execute }
+  return { parameters, execute, harnessDir, harnessArchiveDir: harnessArchiveDir(dataDir) }
 })
 
 export * as BrowserExecute from "./browser-execute"

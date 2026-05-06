@@ -15,9 +15,14 @@ const preview = (text: string) =>
 export const BrowserExecuteTool = Tool.define(
   "browser_execute",
   Effect.gen(function* () {
-    const impl = yield* BrowserExecute.make()
+    const impl = yield* BrowserExecute.make(Global.Path.data)
     return {
-      description: DESCRIPTION,
+      // Substitute the resolved harness path (dev: repo path; compiled:
+      // <dataDir>/harness/) and the archive path so the SKILL.md / helpers.py
+      // / archive references in the description point at concrete locations.
+      description: DESCRIPTION
+        .replaceAll("{{HARNESS_DIR}}", impl.harnessDir)
+        .replaceAll("{{HARNESS_ARCHIVE_DIR}}", impl.harnessArchiveDir),
       parameters: impl.parameters,
       execute: (args: Schema.Schema.Type<typeof impl.parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
@@ -33,12 +38,13 @@ export const BrowserExecuteTool = Tool.define(
 
           const result = yield* impl.execute(args, {
             sessionID: ctx.sessionID,
-            // Per-session scratch under Global.Path.data (persistent state,
-            // not cache). Harness writes sock/port/pid/log + screenshots here.
-            // Agent reads screenshots back via the read tool; the agent
-            // permission ruleset (agent.ts) allows <Global.Path.data>/sessions/*
-            // so that read doesn't prompt.
-            bhTmpDir: BrowserExecute.sessionScratchDir(Global.Path.data, ctx.sessionID),
+            // Persistent per-session dir for screenshots/log. Agent reads
+            // screenshots back via the read tool; the agent permission ruleset
+            // (agent.ts) allows <Global.Path.data>/sessions/* without prompts.
+            bhScratchDir: BrowserExecute.sessionScratchDir(Global.Path.data, ctx.sessionID),
+            // Volatile short-path per-session dir for sock/port/pid. macOS
+            // AF_UNIX sun_path is 104 bytes — kept under /tmp/bcode/<sid>/.
+            bhRuntimeDir: BrowserExecute.sessionRuntimeDir(ctx.sessionID),
             // Stream chunks to the TUI as they arrive — same pattern as bash.
             onChunk: (output) =>
               ctx.metadata({
