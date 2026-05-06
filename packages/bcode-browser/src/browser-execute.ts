@@ -157,7 +157,7 @@ export const make = Effect.fn("BrowserExecute.make")(function* (dataDir: string)
       }),
     )
 
-  return { parameters, execute }
+  return { parameters, execute, harnessDir }
 })
 
 export * as BrowserExecute from "./browser-execute"

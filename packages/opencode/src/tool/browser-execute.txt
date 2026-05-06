@@ -2,6 +2,6 @@ Execute Python against a connected web browser via the BrowserCode harness.
 
 Use this tool whenever the task requires driving a real browser — automation, scraping, end-to-end testing, or interactive exploration. The harness attaches to the user's running Chrome (local) or a Browser Use cloud browser (remote). A session-scoped daemon holds the CDP connection so consecutive calls share the same browser and tabs.
 
-Before the first `browser_execute` call of a session, you MUST read `packages/bcode-browser/harness/SKILL.md`. It defines the helper surface, the screenshot-driven workflow, remote-browser setup, and gotchas — none of that is repeated here.
+Before the first `browser_execute` call of a session, you MUST read `{{HARNESS_DIR}}/SKILL.md`. It defines the helper surface, the screenshot-driven workflow, remote-browser setup, and gotchas — none of that is repeated here.
 
-Optional: read `packages/bcode-browser/harness/src/browser_harness/helpers.py` when you need an exact signature that SKILL.md does not show.
+Optional: read `{{HARNESS_DIR}}/src/browser_harness/helpers.py` when you need an exact signature that SKILL.md does not show.

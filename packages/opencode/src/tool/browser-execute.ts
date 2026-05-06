@@ -17,7 +17,10 @@ export const BrowserExecuteTool = Tool.define(
   Effect.gen(function* () {
     const impl = yield* BrowserExecute.make(Global.Path.data)
     return {
-      description: DESCRIPTION,
+      // Substitute the resolved harness path (dev: repo path; compiled:
+      // <dataDir>/harness/) so the SKILL.md / helpers.py references in the
+      // description point at files that actually exist on disk.
+      description: DESCRIPTION.replaceAll("{{HARNESS_DIR}}", impl.harnessDir),
       parameters: impl.parameters,
       execute: (args: Schema.Schema.Type<typeof impl.parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
