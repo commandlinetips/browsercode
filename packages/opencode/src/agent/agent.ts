@@ -94,9 +94,20 @@ export const layer = Layer.effect(
         // In dev mode the harness lives inside the worktree, so this glob is a
         // no-op there.
         const harnessGlob = path.join(Harness.harnessDir(Global.Path.data), "*")
-        // Past-version snapshots taken at upgrade time. Read-only browsing for
-        // the agent when migrating its own helpers across upgrades.
+        // Past-version snapshots taken at upgrade time. Read-only history for
+        // the agent when migrating its own helpers across upgrades — silent
+        // reads via the external_directory whitelist, but edits/writes/
+        // apply_patch are denied below to keep snapshots immutable. Bash-level
+        // mutations are still possible but the agent has no prompt-driven
+        // reason to delete the dir.
         const harnessArchiveGlob = path.join(Harness.harnessArchiveDir(Global.Path.data), "*")
+        // edit/write/apply_patch all `ctx.ask({ permission: "edit", ... })`
+        // with a path that's `path.relative(worktree, filepath)` — which for
+        // an out-of-worktree archive file looks like
+        // `../../.local/share/bcode/harness-archive/<hash>/foo.py`. A leading
+        // `*` (greedy `.*`) absorbs that prefix; the dir name itself is the
+        // anchor.
+        const harnessArchiveEditDeny = "*/harness-archive/*"
         const whitelistedDirs = [
           Truncate.GLOB,
           browserSessionsGlob,
@@ -113,6 +124,9 @@ export const layer = Layer.effect(
             "*": "ask",
             ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
           },
+          // Covers `edit`, `write`, `apply_patch` — all three tools route
+          // through the `edit` permission key (see EDIT_TOOLS in permission/).
+          edit: { [harnessArchiveEditDeny]: "deny" },
           question: "deny",
           plan_enter: "deny",
           plan_exit: "deny",

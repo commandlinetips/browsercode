@@ -133,12 +133,19 @@ const extractEmbeddedHarness = async (dataDir: string): Promise<string> => {
   return target
 }
 
-let extractPromise: Promise<string> | null = null
+// Per-dataDir cache. In production opencode passes the same Global.Path.data
+// every call, so this is effectively a singleton; tests and any future
+// multi-instance setup that resolves against multiple dataDirs each get their
+// own deduplicated extraction without cross-directory contamination.
+const extractCache = new Map<string, Promise<string>>()
 
 export const resolveHarnessDir = (dataDir: string): Promise<string> => {
   if (!isCompiled) return Promise.resolve(DEV_HARNESS_DIR)
-  if (!extractPromise) extractPromise = extractEmbeddedHarness(dataDir)
-  return extractPromise
+  const cached = extractCache.get(dataDir)
+  if (cached) return cached
+  const fresh = extractEmbeddedHarness(dataDir)
+  extractCache.set(dataDir, fresh)
+  return fresh
 }
 
 export * as Harness from "./harness"
