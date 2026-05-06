@@ -60,6 +60,22 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Building tag=${TAG} version=${VERSION}"
 
+      - name: Verify tag is reachable from main
+        # Releases must be cut from `main`. Tagging a feature branch (e.g. when
+        # a stacked PR has merged into a parent feature branch but not yet into
+        # `main`) silently produces a release whose contents diverge from the
+        # canonical history. Precedent: v0.0.8/v0.0.9 were tagged from
+        # feat/embed-lmnr-key after PR #33 merged into the feature branch
+        # (not into main); main moved on without it and the bcode-laminar
+        # package had to be re-landed in PR #39. This guard fails the release
+        # before any binaries are uploaded.
+        run: |
+          git fetch origin main --depth=1
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag ${GITHUB_REF#refs/tags/} points at $GITHUB_SHA which is not reachable from origin/main. Release tags must be cut from main."
+            exit 1
+          fi
+
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
 
