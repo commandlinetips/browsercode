@@ -28,7 +28,7 @@ import os from "os"
 import path from "path"
 import { Effect, Schema, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
-import { resolveHarnessDir } from "./harness"
+import { harnessArchiveDir, resolveHarnessDir } from "./harness"
 import { uvLocate } from "./uv-locate"
 
 // Per-session persistent scratch under <dataDir>/sessions/<sid>/. Holds
@@ -157,7 +157,7 @@ export const make = Effect.fn("BrowserExecute.make")(function* (dataDir: string)
       }),
     )
 
-  return { parameters, execute, harnessDir }
+  return { parameters, execute, harnessDir, harnessArchiveDir: harnessArchiveDir(dataDir) }
 })
 
 export * as BrowserExecute from "./browser-execute"

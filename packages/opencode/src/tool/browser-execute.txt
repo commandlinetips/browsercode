@@ -4,4 +4,6 @@ Use this tool whenever the task requires driving a real browser — automation, 
 
 Before the first `browser_execute` call of a session, you MUST read `{{HARNESS_DIR}}/SKILL.md`. It defines the helper surface, the screenshot-driven workflow, remote-browser setup, and gotchas — none of that is repeated here.
 
+Edits persist only under `{{HARNESS_DIR}}/agent-workspace/`. Everything else is overwritten on bcode upgrade; previous trees are kept at `{{HARNESS_ARCHIVE_DIR}}/<old-build>/` for migration reference.
+
 Optional: read `{{HARNESS_DIR}}/src/browser_harness/helpers.py` when you need an exact signature that SKILL.md does not show.

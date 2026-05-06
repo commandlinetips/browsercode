@@ -18,9 +18,11 @@ export const BrowserExecuteTool = Tool.define(
     const impl = yield* BrowserExecute.make(Global.Path.data)
     return {
       // Substitute the resolved harness path (dev: repo path; compiled:
-      // <dataDir>/harness/) so the SKILL.md / helpers.py references in the
-      // description point at files that actually exist on disk.
-      description: DESCRIPTION.replaceAll("{{HARNESS_DIR}}", impl.harnessDir),
+      // <dataDir>/harness/) and the archive path so the SKILL.md / helpers.py
+      // / archive references in the description point at concrete locations.
+      description: DESCRIPTION
+        .replaceAll("{{HARNESS_DIR}}", impl.harnessDir)
+        .replaceAll("{{HARNESS_ARCHIVE_DIR}}", impl.harnessArchiveDir),
       parameters: impl.parameters,
       execute: (args: Schema.Schema.Type<typeof impl.parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
