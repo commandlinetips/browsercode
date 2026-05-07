@@ -1867,15 +1867,15 @@ function BrowserExecute(props: ToolProps<typeof BrowserExecuteTool>) {
     if (expanded() || !overflow()) return output()
     return [...lines().slice(0, 10), "…"].join("\n")
   })
-  // Mimic the CPython REPL: ">>> " on the first line, "... " on continuations.
-  // Skip leading/trailing blank lines so a python value that starts with "\n"
-  // doesn't render an empty ">>> " row.
+  // Mimic a JS REPL: "> " on the first line, "  " on continuations. Skip
+  // leading/trailing blank lines so a snippet that starts with "\n" doesn't
+  // render an empty "> " row.
   const prompted = createMemo(() => {
-    const src = (props.input.python ?? "").replace(/^\n+|\n+$/g, "")
+    const src = (props.input.code ?? "").replace(/^\n+|\n+$/g, "")
     if (!src) return ""
     return src
       .split("\n")
-      .map((line, i) => (i === 0 ? ">>> " : "... ") + line)
+      .map((line: string, i: number) => (i === 0 ? "> " : "  ") + line)
       .join("\n")
   })
 
@@ -1900,7 +1900,7 @@ function BrowserExecute(props: ToolProps<typeof BrowserExecuteTool>) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon=">" pending="Writing Python..." complete={props.input.python} part={props.part}>
+        <InlineTool icon=">" pending="Writing JS..." complete={props.input.code} part={props.part}>
           {prompted()}
         </InlineTool>
       </Match>

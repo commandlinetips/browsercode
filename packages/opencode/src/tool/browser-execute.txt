@@ -1,9 +1,23 @@
-Execute Python against a connected web browser via the BrowserCode harness.
+Execute JavaScript against a connected browser via the BrowserCode CDP harness.
 
-Use this tool whenever the task requires driving a real browser — automation, scraping, end-to-end testing, or interactive exploration. The harness attaches to the user's running Chrome (local) or a Browser Use cloud browser (remote). A session-scoped daemon holds the CDP connection so consecutive calls share the same browser and tabs.
+Use this tool whenever the task requires driving a real browser — automation, scraping, end-to-end testing, or interactive exploration. The snippet runs in-process with one persistent CDP `Session` object that survives across calls in the same opencode session.
 
-Before the first `browser_execute` call of a session, you MUST read `{{HARNESS_DIR}}/SKILL.md`. It defines the helper surface, the screenshot-driven workflow, remote-browser setup, and gotchas — none of that is repeated here.
+Snippet scope is intentionally minimal:
 
-Edits persist only under `{{HARNESS_DIR}}/agent-workspace/`. Everything else is overwritten on bcode upgrade; previous trees are kept at `{{HARNESS_ARCHIVE_DIR}}/<old-build>/` for migration reference.
+- `session` — the live CDP `Session`. Domain methods follow `session.<Domain>.<method>(params)` and return Promises (e.g. `await session.Page.navigate({ url: "https://example.com" })`).
+- standard JS globals (no `console` capture is needed; `console.log` from your snippet streams back to the user).
 
-Optional: read `{{HARNESS_DIR}}/src/browser_harness/helpers.py` when you need an exact signature that SKILL.md does not show.
+Top-level `import` statements are not allowed inside the snippet. To reuse code from a previous snippet, write a `.ts` file under your per-project workspace and import it dynamically:
+
+```js
+const path = "/abs/project/.bcode/agent-workspace/scrape.ts"
+const m = await import(`${path}?t=${Date.now()}`)
+const titles = await m.run(session)
+console.log(titles)
+```
+
+This is the only mechanism for code reuse. Same pattern for a 5-line wrapper and a 500-line scrape script. The `?t=${Date.now()}` cache-bust is your responsibility — without it, edits to the file won't be picked up. Saved scripts travel with the project (`.bcode/agent-workspace/` is tracked-by-default, so `git clone && cd && bcode` shares them).
+
+Skills (browser interaction recipes — dialogs, dropdowns, iframes, screenshots, etc.) are read-only documentation under the bcode skills dir. Use the `read` tool to consult them. Skills document, scripts execute. Strict separation: never `import` a skill file.
+
+The first call connects `session` to the user's running Chrome (with `--remote-debugging-port`) automatically by scanning OS-typical profile dirs. To attach explicitly: `await session.connect({ profileDir: "/abs/path" })` or `await session.connect({ wsUrl: "ws://..." })`.

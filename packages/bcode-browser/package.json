@@ -7,7 +7,8 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit",
+    "cdp:gen": "bun src/cdp/gen.ts"
   },
   "exports": {
     "./*": "./src/*.ts"
