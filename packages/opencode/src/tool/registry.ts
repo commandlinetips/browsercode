@@ -11,6 +11,7 @@ import { TodoWriteTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { BrowserExecuteTool } from "./browser-execute"
+import { BrowserOpenCloudTool } from "./browser-open-cloud"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import * as Tool from "./tool"
@@ -115,6 +116,7 @@ export const layer: Layer.Layer<
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
     const browserExecute = yield* BrowserExecuteTool
+    const browserOpenCloud = yield* BrowserOpenCloudTool
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -209,6 +211,7 @@ export const layer: Layer.Layer<
           search: Tool.init(websearch),
           skill: Tool.init(skilltool),
           browserExecute: Tool.init(browserExecute),
+          browserOpenCloud: Tool.init(browserOpenCloud),
           patch: Tool.init(patchtool),
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
@@ -232,6 +235,7 @@ export const layer: Layer.Layer<
             tool.search,
             tool.skill,
             tool.browserExecute,
+            tool.browserOpenCloud,
             tool.patch,
             ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [tool.lsp] : []),
             ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [tool.plan] : []),

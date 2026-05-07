@@ -35,9 +35,8 @@
 // Level-2 hook in packages/opencode is a thin adapter.
 
 import fs from "fs/promises"
-import path from "path"
 import { Effect, Schema } from "effect"
-import { Session } from "./cdp/session"
+import { SessionStore } from "./session-store"
 
 const DEFAULT_TIMEOUT_MS = 60 * 1000
 const MAX_TIMEOUT_MS = 10 * 60 * 1000
@@ -54,6 +53,10 @@ export const parameters = Schema.Struct({
 export type Parameters = Schema.Schema.Type<typeof parameters>
 
 export interface ExecuteContext {
+  // Identifies the per-opencode-session CDP Session to bind into the snippet.
+  // Shared with `browser_open_cloud` via the SessionStore so a cloud-attach
+  // call's Session is driven by subsequent `browser_execute` calls.
+  readonly sessionID: string
   // Per-project workspace dir: <projectDir>/.bcode/agent-workspace/. Created
   // on first call. The agent reads/writes/edits .ts files here via the
   // standard read/write/edit tools and imports them at runtime via
@@ -92,14 +95,13 @@ const serialize = (v: unknown): string => {
   }
 }
 
-// Per-opencode-session Session singleton. Connects lazily on first snippet;
-// closed on session end via the caller's scope finalizer.
+// Snippet executor. The CDP Session is resolved per-call from `SessionStore`
+// keyed on `ctx.sessionID` so a Session attached via `browser_open_cloud` is
+// the same one a follow-up `browser_execute` drives.
 export const make = Effect.fn("BrowserExecute.make")(function* () {
-  const session = new Session()
-  yield* Effect.addFinalizer(() => Effect.sync(() => session.close()))
-
   const execute = (args: Parameters, ctx: ExecuteContext) =>
     Effect.gen(function* () {
+      const session = SessionStore.get(ctx.sessionID)
       yield* Effect.promise(() => fs.mkdir(ctx.workspaceDir, { recursive: true }))
 
       const wrapped = yield* Effect.try({
@@ -144,7 +146,7 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
       }),
     )
 
-  return { parameters, execute, session }
+  return { parameters, execute }
 })
 
 export * as BrowserExecute from "./browser-execute"

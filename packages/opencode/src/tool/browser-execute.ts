@@ -45,6 +45,7 @@ export const BrowserExecuteTool = Tool.define(
           const workspaceDir = workspaceDirOf(instance.directory)
 
           const result = yield* impl.execute(args, {
+            sessionID: ctx.sessionID,
             workspaceDir,
             // Stream chunks to the TUI as they arrive — same pattern as bash.
             onChunk: (output) =>
