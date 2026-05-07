@@ -2,22 +2,13 @@ Execute JavaScript against a connected browser via the BrowserCode CDP harness.
 
 Use this tool whenever the task requires driving a real browser — automation, scraping, end-to-end testing, or interactive exploration. The snippet runs in-process with one persistent CDP `Session` object that survives across calls in the same opencode session.
 
-Snippet scope is intentionally minimal:
+Before the first `browser_execute` call of a session, you MUST read `{{SKILLS_DIR}}/BROWSER.md`. It defines the snippet model, the workspace pattern, the `session` API surface, and gotchas.
 
-- `session` — the live CDP `Session`. Domain methods follow `session.<Domain>.<method>(params)` and return Promises (e.g. `await session.Page.navigate({ url: "https://example.com" })`).
-- standard JS globals (no `console` capture is needed; `console.log` from your snippet streams back to the user).
+Snippet scope:
 
-Top-level `import` statements are not allowed inside the snippet. To reuse code from a previous snippet, write a `.ts` file under your per-project workspace and import it dynamically:
+- `session` — the live CDP `Session`. Domain methods follow `session.<Domain>.<method>(params)` and return Promises.
+- standard JS globals (`console.log` etc. stream back to the user).
 
-```js
-const path = "/abs/project/.bcode/agent-workspace/scrape.ts"
-const m = await import(`${path}?t=${Date.now()}`)
-const titles = await m.run(session)
-console.log(titles)
-```
+Top-level `import` is not allowed inside a snippet. To reuse code across calls, save it as a `.ts` file under `./.bcode/agent-workspace/` (per-project, tracked-by-default in git) and `await import("/abs/path?t=" + Date.now())` it from a later snippet.
 
-This is the only mechanism for code reuse. Same pattern for a 5-line wrapper and a 500-line scrape script. The `?t=${Date.now()}` cache-bust is your responsibility — without it, edits to the file won't be picked up. Saved scripts travel with the project (`.bcode/agent-workspace/` is tracked-by-default, so `git clone && cd && bcode` shares them).
-
-Skills (browser interaction recipes — dialogs, dropdowns, iframes, screenshots, etc.) are read-only documentation under the bcode skills dir. Use the `read` tool to consult them. Skills document, scripts execute. Strict separation: never `import` a skill file.
-
-The first call connects `session` to the user's running Chrome (with `--remote-debugging-port`) automatically by scanning OS-typical profile dirs. To attach explicitly: `await session.connect({ profileDir: "/abs/path" })` or `await session.connect({ wsUrl: "ws://..." })`.
+For UI-mechanic recipes (dialogs, dropdowns, iframes, shadow DOM, uploads, scrolling, screenshots, …), `read` files under `{{SKILLS_DIR}}/interaction-skills/`. Skills are documentation; they document what to write, never what to import.

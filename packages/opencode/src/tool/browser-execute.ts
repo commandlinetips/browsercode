@@ -5,6 +5,7 @@
 import path from "path"
 import { Effect, Schema } from "effect"
 import { BrowserExecute } from "@browser-use/bcode-browser/browser-execute"
+import { Global } from "@opencode-ai/core/global"
 import { InstanceState } from "@/effect/instance-state"
 import * as Tool from "./tool"
 import DESCRIPTION from "./browser-execute.txt"
@@ -22,12 +23,13 @@ const workspaceDirOf = (projectDir: string) => path.join(projectDir, ".bcode", "
 export const BrowserExecuteTool = Tool.define(
   "browser_execute",
   Effect.gen(function* () {
-    const impl = yield* BrowserExecute.make()
+    const impl = yield* BrowserExecute.make(Global.Path.data)
     return {
-      // Resolve {{WORKSPACE_DIR}} per-call against the active project's
-      // workspace dir. The agent sees a concrete absolute path and never has
-      // to reason about project-detection.
-      description: DESCRIPTION,
+      // Substitute the resolved skills path so SKILL.md / interaction-skills
+      // references in the description point at concrete locations. Workspace
+      // is per-project and agent-discoverable from cwd, so it's not
+      // substituted here.
+      description: DESCRIPTION.replaceAll("{{SKILLS_DIR}}", impl.skillsDir),
       parameters: impl.parameters,
       execute: (args: Schema.Schema.Type<typeof impl.parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {

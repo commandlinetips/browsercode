@@ -37,6 +37,7 @@
 import fs from "fs/promises"
 import { Effect, Schema } from "effect"
 import { SessionStore } from "./session-store"
+import { Skills } from "./skills"
 
 const DEFAULT_TIMEOUT_MS = 60 * 1000
 const MAX_TIMEOUT_MS = 10 * 60 * 1000
@@ -98,7 +99,16 @@ const serialize = (v: unknown): string => {
 // Snippet executor. The CDP Session is resolved per-call from `SessionStore`
 // keyed on `ctx.sessionID` so a Session attached via `browser_open_cloud` is
 // the same one a follow-up `browser_execute` drives.
-export const make = Effect.fn("BrowserExecute.make")(function* () {
+//
+// `dataDir` is opencode's XDG_DATA_HOME for bcode (~/.local/share/bcode/ on
+// Linux/Mac). Compiled-mode skills are extracted to `<dataDir>/skills/` once
+// per build hash; dev mode resolves to the in-tree `packages/bcode-browser/
+// skills/` directly. The resolved path is exposed via the returned
+// `skillsDir` getter so the Level-2 wrapper can substitute it into the tool
+// description at make-time.
+export const make = Effect.fn("BrowserExecute.make")(function* (dataDir: string) {
+  const skillsDir = yield* Effect.promise(() => Skills.resolveSkillsDir(dataDir))
+
   const execute = (args: Parameters, ctx: ExecuteContext) =>
     Effect.gen(function* () {
       const session = SessionStore.get(ctx.sessionID)
@@ -146,7 +156,7 @@ export const make = Effect.fn("BrowserExecute.make")(function* () {
       }),
     )
 
-  return { parameters, execute }
+  return { parameters, execute, skillsDir }
 })
 
 export * as BrowserExecute from "./browser-execute"

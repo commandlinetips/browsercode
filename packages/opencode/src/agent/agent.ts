@@ -15,6 +15,7 @@ import PROMPT_TITLE from "./prompt/title.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
+import { Skills } from "@browser-use/bcode-browser/skills"
 import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
@@ -90,9 +91,16 @@ export const layer = Layer.effect(
         // to whichever project is open (Phase H hard rule #3 — workspace as
         // plain code, per-project).
         const agentWorkspaceGlob = "**/.bcode/agent-workspace/**/*"
+        // Browser-skills tree shipped inside the binary, extracted at runtime
+        // to <Global.Path.data>/skills/. Read-only baseline; the agent reads
+        // BROWSER.md + interaction-skills/ when driving the browser. In dev
+        // mode the skills live inside the worktree, so this glob is a no-op
+        // there.
+        const browserSkillsGlob = path.join(Skills.skillsDir(Global.Path.data), "*")
         const whitelistedDirs = [
           Truncate.GLOB,
           browserSessionsGlob,
+          browserSkillsGlob,
           path.join(Global.Path.tmp, "*"),
           ...skillDirs.map((dir) => path.join(dir, "*")),
         ]
