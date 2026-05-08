@@ -1,13 +1,12 @@
 # Upstream
 
-This doc tracks BrowserCode's relationship to its two upstream sources:
+This doc tracks BrowserCode's relationship to upstream:
 
 1. **anomalyco/opencode** — forked in as the bulk of this repo. Sync runbook: `opencode-sync.md`.
-2. **browser-use/browser-harness** — vendored into `packages/bcode-browser/harness/`. Sync runbook: `harness-sync.md`.
 
-The two are deliberately independent — different upstreams, different cadences, different sync mechanisms (merge vs file-copy). One agent pulls one upstream at a time; never both in the same PR.
+(Phase H retired the `browser-use/browser-harness` vendoring relationship — see §3 below for the historical record. Browser code now lives in TS at `packages/bcode-browser/src/cdp/`, owned by us, no sync cadence.)
 
-Sections: **modification zones** (where is it safe to change upstream code?), **sync log** (when did we last pull each upstream and to what commit?), **harness divergences** (per-file deliberate-deltas list, used during harness sync).
+Sections: **modification zones** (where is it safe to change upstream code?), **sync log** (when did we last pull upstream and to what commit?), **harness retirement** (what happened to the vendored Python harness).
 
 ---
 
@@ -54,7 +53,7 @@ Future Yellow modifications (per ROADMAP):
 
 Every Yellow modification should be evaluated for conversion to a Green extension point via upstream PR. See decisions.md §1c and ROADMAP F8.
 
-The harness has its own narrower zone policy (see §3 below): `agent-workspace/agent_helpers.py` is editable, the `src/browser_harness/` core package is protected, deliberate divergences are logged per-file.
+(The harness's narrower zone policy retired with Phase H — see §3.)
 
 ---
 
@@ -98,9 +97,11 @@ Each upstream has its own append-only table. Add a row every time you pull.
 
 ---
 
-## 3. Harness divergences and excluded paths
+## 3. Harness retirement (historical)
 
-Per-file record of where `packages/bcode-browser/harness/` deliberately differs from upstream, plus the list of paths excluded from the vendored tree entirely. Read this *before* a sync diff so intentional differences aren't mistaken for missing features and excluded paths aren't accidentally re-imported.
+Phase H (TS port, v0.1.0) retired the `browser-use/browser-harness` vendoring. The Python harness was deleted; the CDP layer was ported to TS at `packages/bcode-browser/src/cdp/` (initial copy from `browser-use/browser-harness-js@95b7a22a`, ours after — see `packages/bcode-browser/src/cdp/PROVENANCE.md`). There is no sync cadence with either harness repo; behaviors of interest from either are tracked in `memory/browsercode/harness_watchlist.md` and ported individually as needed.
+
+The historical sync log of the Python harness vendoring (Apr 26 – May 6, 2026) is preserved below for archaeology only; do not pull from those rows.
 
 Path-allowlist policy (decisions.md §3.7, §4.5; updated for upstream PR #229 src-layout reorg):
 

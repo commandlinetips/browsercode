@@ -6,9 +6,20 @@
 // See decisions.md §1c (three-level model) and §1d (this package) in the
 // BrowserCode memory docs.
 //
-// Contents (planned, by ROADMAP phase):
-//   harness/               — vendored browser-harness (ROADMAP A2; tracked in root UPSTREAM.md)
-//   src/browser-execute/   — browser_execute tool body (ROADMAP A4)
+// Contents:
+//   src/cdp/               — vendored CDP layer (session.ts, generated.ts, codegen)
+//   src/browser-execute.ts — in-process JS-eval browser_execute body
+//   src/session-store.ts   — per-opencode-session CDP Session map
+//   src/skills.ts          — runtime resolver for embedded skills
+//   skills/                — BROWSER.md + interaction-skills/*.md + cloud-browser.md (embedded into binary)
+//
+// Cloud browser provisioning is intentionally NOT a separate Level-1
+// surface. The agent reads `skills/cloud-browser.md` and writes the
+// fetch+connect snippet itself, matching how local-browser connect works
+// (snippet-side, not tool-side). Decisions trail in
+// `memory/browsercode/decisions.md` §3.4.
+//
+// Planned (per ROADMAP phase):
 //   src/fetch-use/         — FetchUse.Service implementation (ROADMAP B1)
 //   src/cloud/             — cloud deploy, skillbase, judge clients (Phase D)
 //

@@ -1,9 +1,14 @@
-Execute Python against a connected web browser via the BrowserCode harness.
+Execute JavaScript against a connected browser via the BrowserCode CDP harness.
 
-Use this tool whenever the task requires driving a real browser — automation, scraping, end-to-end testing, or interactive exploration. The harness attaches to the user's running Chrome (local) or a Browser Use cloud browser (remote). A session-scoped daemon holds the CDP connection so consecutive calls share the same browser and tabs.
+Use this tool whenever the task requires driving a real browser — automation, scraping, end-to-end testing, or interactive exploration. The snippet runs in-process with one persistent CDP `Session` object that survives across calls in the same opencode session. You connect once and drive many.
 
-Before the first `browser_execute` call of a session, you MUST read `{{HARNESS_DIR}}/SKILL.md`. It defines the helper surface, the screenshot-driven workflow, remote-browser setup, and gotchas — none of that is repeated here.
+Before the first `browser_execute` call of a session, you MUST read `{{SKILLS_DIR}}/BROWSER.md`. It defines the snippet model, the three connection methods (local user Chrome, isolated debug-port Chrome, Browser Use cloud browser), the workspace pattern, the `session` API surface, and gotchas. For cloud-browser specifics, also read `{{SKILLS_DIR}}/cloud-browser.md`.
 
-Edits persist only under `{{HARNESS_DIR}}/agent-workspace/`. Everything else is overwritten on bcode upgrade; previous trees are kept at `{{HARNESS_ARCHIVE_DIR}}/<old-build>/` for migration reference.
+Snippet scope:
 
-Optional: read `{{HARNESS_DIR}}/src/browser_harness/helpers.py` when you need an exact signature that SKILL.md does not show.
+- `session` — the live CDP `Session`. You call `session.connect(...)` once at the start of your work; subsequent snippets reuse the same connection. Domain methods follow `session.<Domain>.<method>(params)` and return Promises.
+- standard JS globals (`console.log` etc. stream back to the user; `process.env` is available for reading `BROWSER_USE_API_KEY` etc.).
+
+Top-level `import` is not allowed inside a snippet. To reuse code across calls, save it as a `.ts` file under `./.bcode/agent-workspace/` (per-project, tracked-by-default in git) and `await import("/abs/path?t=" + Date.now())` it from a later snippet.
+
+For UI-mechanic recipes, list `{{SKILLS_DIR}}/interaction-skills/` to see all available topics, then `read` the relevant ones. Skills are documentation; they document what to write, never what to import.

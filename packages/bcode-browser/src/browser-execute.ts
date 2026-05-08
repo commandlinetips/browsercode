@@ -1,56 +1,58 @@
 // browser_execute — single-tool browser interface (decisions.md §3.2).
 //
-// Spawns the vendored harness with a Python snippet:
+// Executes a JavaScript snippet in-process against a per-opencode-session
+// `Session` (the CDP transport from `./cdp/session.ts`). No subprocess, no
+// daemon, no Unix socket, no `uv` — we wrap the snippet with
+// `new AsyncFunction("session", "console", code)` and run it.
 //
-//   uv run --project <HARNESS_DIR> browser-harness -c "<code>"
+// Snippet scope (Phase H hard rule #3 — workspace-as-plain-code):
+//   `session`        — the live CDP `Session`, persistent across calls.
+//   `console`        — per-call capture object shadowing the global. Same
+//                      `{log, error, warn, info}` API as the real console.
+//   standard JS globals.
 //
-// `browser-harness` is the console-script entry point declared in the
-// harness's `pyproject.toml` (since upstream PR #229 moved the package to a
-// `src/browser_harness/` layout). `uv run --project <dir>` resolves the
-// project's venv/dependencies, then dispatches to the entry point.
+// Nothing is auto-loaded. To reuse code from a previous snippet the agent
+// writes plain `await import("/abs/path/foo.ts?t=" + Date.now())` against a
+// `.ts` file it owns under `<projectDir>/.bcode/agent-workspace/`. Same
+// mechanism for a 5-line wrapper and a 500-line scrape script. The Level-2
+// wrapper supplies `ctx.workspaceDir` so `.ts` files written under it can be
+// addressed by absolute path; this resolver creates the dir on first use.
 //
-// The harness manages the daemon itself via admin.ensure_daemon(). We just
-// pipe stdout+stderr back. BU_NAME is namespaced by sessionID so parallel
-// sub-agents (each with their own session) get isolated daemons + browsers.
+// Output capture: a per-call `console` object (`{log, error, warn, info}`)
+// is bound into the snippet's lexical scope as the second AsyncFunction
+// argument. JavaScript's scope chain resolves `console.log(...)` to the
+// function parameter before reaching the global, so existing snippets keep
+// working byte-identically while the global `console` stays untouched.
+// This is concurrency-safe: two overlapping `execute` calls (different
+// opencode sessions in the same process, parallel tool calls within one
+// session, etc.) each get their own capture buffer with no global state to
+// clobber. See `memory/browsercode/phase_h_eval_feasibility_findings.md`
+// for the verified eval pattern (compiled-mode `bun build --compile` works
+// on Linux x64; AsyncFunction + dynamic import survive bunfs).
 //
-// Two per-session dirs, separated by lifetime + path-length sensitivity:
-//   BH_TMP_DIR    — screenshots, debug overlays, daemon log. Persistent under
-//                   <dataDir>/sessions/<sid>/. Long path is fine; the cloud
-//                   UI / read tool finds artifacts here.
-//   BH_RUNTIME_DIR — sock, port, pid. Volatile under <runtimeRoot>/bcode/<sid>/.
-//                   Path-length budgeted on macOS (AF_UNIX sun_path = 104).
+// Cancellation: JS Promises are not preemptively cancellable. A snippet
+// without `await` yield-points (e.g. `for (let i = 0; i < 1e9; i++) {}`)
+// runs to completion before our timeout fiber observes it. `Effect.timeoutOrElse`
+// fails the surrounding fiber but the orphan Promise keeps running until it
+// finishes. This matches the `uv run` subprocess case (SIGTERM only after
+// the Python signal handler yields). Document, don't fix.
 //
 // Level 1 per decisions.md §1c — substantial implementation lives here. The
-// Level-2 hook in packages/opencode is a one-line wrapper.
+// Level-2 hook in packages/opencode is a thin adapter.
 
 import fs from "fs/promises"
-import os from "os"
-import path from "path"
-import { Effect, Schema, Stream } from "effect"
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
-import { harnessArchiveDir, resolveHarnessDir } from "./harness"
-import { uvLocate } from "./uv-locate"
-
-// Per-session persistent scratch under <dataDir>/sessions/<sid>/. Holds
-// screenshots, debug overlays, daemon log. Caller supplies dataDir
-// (e.g. opencode's Global.Path.data).
-export const sessionScratchDir = (dataDir: string, sessionID: string) =>
-  path.join(dataDir, "sessions", sessionID)
-
-// Per-session volatile runtime dir under <runtimeRoot>/bcode/<sid>/. Holds
-// AF_UNIX sock + port file + pid. macOS sun_path is 104 bytes:
-// `/tmp/bcode/ses_<26ch>/bu.sock` is 50 chars — well within budget.
-// On Windows the daemon listens on TCP so the path doesn't need to be short,
-// but using os.tmpdir() keeps the layout consistent.
-const RUNTIME_ROOT = process.platform === "win32" ? os.tmpdir() : "/tmp"
-export const sessionRuntimeDir = (sessionID: string) =>
-  path.join(RUNTIME_ROOT, "bcode", sessionID)
+import { Effect, Schema } from "effect"
+import { SessionStore } from "./session-store"
+import { Skills } from "./skills"
 
 const DEFAULT_TIMEOUT_MS = 60 * 1000
 const MAX_TIMEOUT_MS = 10 * 60 * 1000
 
 export const parameters = Schema.Struct({
-  python: Schema.String.annotate({ description: "Python source to execute against the browser harness." }),
+  code: Schema.String.annotate({
+    description:
+      "JavaScript source. Wrapped in an async function with `session` (CDP Session) and `console` (per-call capture; same `log/error/warn/info` API) bound.",
+  }),
   timeout: Schema.optional(Schema.Number).annotate({
     description: `Timeout in milliseconds. Default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}.`,
   }),
@@ -59,96 +61,96 @@ export const parameters = Schema.Struct({
 export type Parameters = Schema.Schema.Type<typeof parameters>
 
 export interface ExecuteContext {
+  // Identifies the per-opencode-session CDP Session to bind into the snippet.
+  // The same Session is reused across calls — the agent calls
+  // `session.connect(...)` in one snippet and subsequent snippets find the
+  // already-connected Session.
   readonly sessionID: string
-  // BH_TMP_DIR. Persistent per-session dir for screenshots/log. Pre-compute
-  // via sessionScratchDir(dataDir, sessionID).
-  readonly bhScratchDir: string
-  // BH_RUNTIME_DIR. Volatile short-path per-session dir for sock/port/pid.
-  // Pre-compute via sessionRuntimeDir(sessionID).
-  readonly bhRuntimeDir: string
-  // Optional progress callback invoked per output chunk (combined stdout+stderr).
-  // Level-2 supplies this to drive TUI streaming via opencode's `ctx.metadata`.
-  // The callback receives the fully accumulated output so far, not just the
+  // Per-project workspace dir: <projectDir>/.bcode/agent-workspace/. Created
+  // on first call. The agent reads/writes/edits .ts files here via the
+  // standard read/write/edit tools and imports them at runtime via
+  // `await import("<absPath>?t=" + Date.now())`. Resolved by the Level-2
+  // wrapper from opencode's project-detection (Instance.directory).
+  readonly workspaceDir: string
+  // Optional progress callback invoked per output chunk (combined console
+  // streams). Receives the fully accumulated output so far, not just the
   // delta — simpler for consumers that just want to set "current output".
   readonly onChunk?: (output: string) => Effect.Effect<void>
 }
 
 export interface ExecuteResult {
   readonly output: string
-  readonly exitCode: number
+  // The snippet's `return` value, JSON-serialized when possible. `undefined`
+  // serializes as `null` (JSON has no undefined). Non-serializable values
+  // fall back to `String(v)`.
+  readonly result: string
 }
 
-const UV_MISSING_HINT =
-  "uv is not installed or not on PATH. Install it once: curl -fsSL https://astral.sh/uv/install.sh | sh " +
-  "(Windows: irm https://astral.sh/uv/install.ps1 | iex). " +
-  "If you just installed uv, restart your terminal so PATH picks it up."
+// AsyncFunction is not a global — pull it off an async arrow's constructor.
+const AsyncFunction = (async () => {}).constructor as new (
+  ...args: string[]
+) => (...injected: unknown[]) => Promise<unknown>
 
-// Spawn errors flow through effect's PlatformError; ENOENT lives on the wrapped
-// cause's `.code`. Walk the cause chain so we detect it regardless of nesting.
-const isUvMissing = (err: unknown): boolean => {
-  let cur: unknown = err
-  for (let i = 0; i < 5 && cur; i++) {
-    if (typeof cur === "object" && cur !== null && (cur as { code?: string }).code === "ENOENT") return true
-    cur = (cur as { cause?: unknown }).cause
+const serialize = (v: unknown): string => {
+  if (v === undefined) return "null"
+  try {
+    return JSON.stringify(
+      v,
+      (_k, val) => (typeof val === "bigint" ? val.toString() : val),
+      2,
+    ) ?? "null"
+  } catch {
+    return JSON.stringify(String(v))
   }
-  return false
 }
 
-// dataDir is opencode's XDG_DATA_HOME for bcode (~/.local/share/bcode/). The
-// harness lives at <dataDir>/harness/. We resolve eagerly at make-time so the
-// extraction (compiled mode) happens before the agent reads SKILL.md.
+// Snippet executor. The CDP Session is resolved per-call from `SessionStore`
+// keyed on `ctx.sessionID`. The agent connects with `await session.connect(...)`
+// in one snippet (Way 1 / Way 2 / Way 3 in BROWSER.md); the Session persists
+// for follow-up snippets in the same opencode session.
+//
+// `dataDir` is opencode's XDG_DATA_HOME for bcode (~/.local/share/bcode/ on
+// Linux/Mac). Compiled-mode skills are extracted to `<dataDir>/skills/` once
+// per build hash; dev mode resolves to the in-tree `packages/bcode-browser/
+// skills/` directly. The resolved path is exposed via the returned
+// `skillsDir` getter so the Level-2 wrapper can substitute it into the tool
+// description at make-time.
 export const make = Effect.fn("BrowserExecute.make")(function* (dataDir: string) {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-  const locate = yield* uvLocate
-  const harnessDir = yield* Effect.promise(() => resolveHarnessDir(dataDir))
+  const skillsDir = yield* Effect.promise(() => Skills.resolveSkillsDir(dataDir))
 
   const execute = (args: Parameters, ctx: ExecuteContext) =>
     Effect.gen(function* () {
-      // Pre-flight check on harnessDir: spawn ENOENT on a missing cwd surfaces
-      // with `path: "uv"` on Bun/Windows, which is indistinguishable from a
-      // truly-missing uv. Catch it here so the user gets the real cause
-      // instead of a misleading "uv not on PATH" hint.
-      if (!(yield* Effect.promise(() => fs.access(harnessDir).then(() => true, () => false)))) {
-        return yield* Effect.fail(new Error(`harness directory not found at ${harnessDir} — bcode build is broken; please reinstall`))
-      }
-      yield* Effect.promise(() => fs.mkdir(ctx.bhScratchDir, { recursive: true }))
-      yield* Effect.promise(() => fs.mkdir(ctx.bhRuntimeDir, { recursive: true }))
-      const uv = yield* locate
-      const proc = ChildProcess.make(
-        uv,
-        ["run", "--project", harnessDir, "browser-harness", "-c", args.python],
-        {
-          cwd: harnessDir,
-          extendEnv: true,
-          env: {
-            BU_NAME: ctx.sessionID,
-            BH_TMP_DIR: ctx.bhScratchDir,
-            BH_RUNTIME_DIR: ctx.bhRuntimeDir,
-          },
-          stdin: "ignore",
-        },
-      )
+      const session = SessionStore.get(ctx.sessionID)
+      yield* Effect.promise(() => fs.mkdir(ctx.workspaceDir, { recursive: true }))
 
-      // uv not on PATH (ENOENT) — surface as exit 127 with the install hint
-      // so both the agent (via output) and the user (via TUI) can act on it.
-      // 127 mirrors POSIX "command not found". Other spawn failures rethrow.
-      const spawned = yield* spawner.spawn(proc).pipe(
-        Effect.catch((err) =>
-          isUvMissing(err) ? Effect.succeed("uv-missing" as const) : Effect.fail(new Error(`failed to spawn uv: ${err}`)),
-        ),
-      )
-      if (spawned === "uv-missing") return { output: UV_MISSING_HINT, exitCode: 127 } satisfies ExecuteResult
+      const wrapped = yield* Effect.try({
+        try: () => new AsyncFunction("session", "console", args.code),
+        catch: (err) => new Error(`syntax error in browser_execute snippet: ${err}`),
+      })
 
       let output = ""
-      const drain = Stream.runForEach(Stream.decodeText(spawned.all), (chunk) =>
-        Effect.gen(function* () {
-          output += chunk
-          if (ctx.onChunk) yield* ctx.onChunk(output)
-        }),
-      )
-      const [, exitCode] = yield* Effect.all([drain, spawned.exitCode], { concurrency: 2 })
+      const tee = (...a: unknown[]) => {
+        output += a.map((x) => (typeof x === "string" ? x : serialize(x))).join(" ") + "\n"
+        if (ctx.onChunk) Effect.runFork(ctx.onChunk(output))
+      }
+      // Prototype-chain to the real `console` so uncommon methods (`debug`,
+      // `dir`, `trace`, `table`, `group`, …) don't throw when a snippet calls
+      // them. The five "log line" methods are tee'd into our capture; anything
+      // else falls through to the real console — written but not captured.
+      const snippetConsole = Object.assign(Object.create(console), {
+        log: tee,
+        error: tee,
+        warn: tee,
+        info: tee,
+        debug: tee,
+      })
 
-      return { output, exitCode } satisfies ExecuteResult
+      const ran = yield* Effect.tryPromise({
+        try: () => wrapped(session, snippetConsole),
+        catch: (err) => new Error(`browser_execute snippet threw: ${err instanceof Error ? err.stack ?? err.message : String(err)}`),
+      })
+
+      return { output, result: serialize(ran) } satisfies ExecuteResult
     }).pipe(
       Effect.scoped,
       Effect.timeoutOrElse({
@@ -157,7 +159,7 @@ export const make = Effect.fn("BrowserExecute.make")(function* (dataDir: string)
       }),
     )
 
-  return { parameters, execute, harnessDir, harnessArchiveDir: harnessArchiveDir(dataDir) }
+  return { parameters, execute, skillsDir }
 })
 
 export * as BrowserExecute from "./browser-execute"

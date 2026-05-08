@@ -85,9 +85,7 @@ report_drift() {
 }
 
 opencode_sha="$(last_sha_after 'anomalyco/opencode → this repo')"
-harness_sha="$(last_sha_after 'browser-use/browser-harness →')"
 
 report_drift "anomalyco/opencode" "upstream" "dev" "$opencode_sha"
-report_drift "browser-use/browser-harness" "harness" "main" "$harness_sha"
 
 echo "Source of truth: UPSTREAM.md. Append a row when you pull."

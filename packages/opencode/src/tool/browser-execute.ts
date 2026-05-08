@@ -2,9 +2,11 @@
 //
 // Adapter only. Substantive logic lives in @browser-use/bcode-browser/browser-execute.
 
+import path from "path"
 import { Effect, Schema } from "effect"
 import { BrowserExecute } from "@browser-use/bcode-browser/browser-execute"
 import { Global } from "@opencode-ai/core/global"
+import { InstanceState } from "@/effect/instance-state"
 import * as Tool from "./tool"
 import DESCRIPTION from "./browser-execute.txt"
 
@@ -12,22 +14,27 @@ const MAX_METADATA_LENGTH = 30_000
 const preview = (text: string) =>
   text.length <= MAX_METADATA_LENGTH ? text : "...\n\n" + text.slice(-MAX_METADATA_LENGTH)
 
+// Per-project workspace where the agent saves reusable .ts scripts. Resolved
+// from opencode's project-detection (Instance.directory) — same source that
+// already finds .bcode/plans, .bcode/db, etc. Shared via clone (`.bcode/` is
+// tracked-by-default, see hard rule #3) and isolated per project.
+const workspaceDirOf = (projectDir: string) => path.join(projectDir, ".bcode", "agent-workspace")
+
 export const BrowserExecuteTool = Tool.define(
   "browser_execute",
   Effect.gen(function* () {
     const impl = yield* BrowserExecute.make(Global.Path.data)
     return {
-      // Substitute the resolved harness path (dev: repo path; compiled:
-      // <dataDir>/harness/) and the archive path so the SKILL.md / helpers.py
-      // / archive references in the description point at concrete locations.
-      description: DESCRIPTION
-        .replaceAll("{{HARNESS_DIR}}", impl.harnessDir)
-        .replaceAll("{{HARNESS_ARCHIVE_DIR}}", impl.harnessArchiveDir),
+      // Substitute the resolved skills path so SKILL.md / interaction-skills
+      // references in the description point at concrete locations. Workspace
+      // is per-project and agent-discoverable from cwd, so it's not
+      // substituted here.
+      description: DESCRIPTION.replaceAll("{{SKILLS_DIR}}", impl.skillsDir),
       parameters: impl.parameters,
       execute: (args: Schema.Schema.Type<typeof impl.parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
           // Permission gate. Default agent ruleset has `"*": "allow"` so this
-          // auto-allows; users can opt out via opencode.json — either
+          // auto-allows; users can opt out via bcode.json — either
           // `"tools": { "browser_execute": false }` or a per-permission rule.
           yield* ctx.ask({
             permission: "browser_execute",
@@ -36,15 +43,12 @@ export const BrowserExecuteTool = Tool.define(
             metadata: {},
           })
 
+          const instance = yield* InstanceState.context
+          const workspaceDir = workspaceDirOf(instance.directory)
+
           const result = yield* impl.execute(args, {
             sessionID: ctx.sessionID,
-            // Persistent per-session dir for screenshots/log. Agent reads
-            // screenshots back via the read tool; the agent permission ruleset
-            // (agent.ts) allows <Global.Path.data>/sessions/* without prompts.
-            bhScratchDir: BrowserExecute.sessionScratchDir(Global.Path.data, ctx.sessionID),
-            // Volatile short-path per-session dir for sock/port/pid. macOS
-            // AF_UNIX sun_path is 104 bytes — kept under /tmp/bcode/<sid>/.
-            bhRuntimeDir: BrowserExecute.sessionRuntimeDir(ctx.sessionID),
+            workspaceDir,
             // Stream chunks to the TUI as they arrive — same pattern as bash.
             onChunk: (output) =>
               ctx.metadata({
@@ -53,8 +57,13 @@ export const BrowserExecuteTool = Tool.define(
           })
           return {
             title: "browser_execute",
-            output: result.output,
-            metadata: { exitCode: result.exitCode, output: preview(result.output) },
+            output: [
+              result.output.trimEnd(),
+              result.result === "null" ? "" : `=> ${result.result}`,
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+            metadata: { result: result.result, output: preview(result.output) },
           }
         }).pipe(Effect.orDie),
     }
