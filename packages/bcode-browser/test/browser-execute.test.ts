@@ -130,3 +130,51 @@ test.skipIf(!enabled)("syntax error in snippet surfaces a clean failure", async 
     ),
   ).rejects.toThrow(/syntax error/)
 })
+
+// Concurrency safety: two overlapping execute() calls (different sessionIDs)
+// must each capture their own console output without leaking into each other
+// or into the real global console. No Chrome required — the snippets never
+// touch `session`. Regression guard for the global-monkey-patch bug fixed
+// by the per-call `console` argument shadowing the global.
+test("overlapping execute calls do not clobber each other's console capture", async () => {
+  const realLogBefore = console.log
+  const aWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "bcode-conc-a-"))
+  const bWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), "bcode-conc-b-"))
+  const aData = await fs.mkdtemp(path.join(os.tmpdir(), "bcode-data-a-"))
+  const bData = await fs.mkdtemp(path.join(os.tmpdir(), "bcode-data-b-"))
+
+  const run = (label: string, dataDirX: string, workspace: string) =>
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const impl = yield* BrowserExecute.make(dataDirX)
+          return yield* impl.execute(
+            {
+              // Yield once so both snippets' bodies are mid-execution at the same
+              // time; under the old global-patch impl, B's tee would shadow A's
+              // and the `finally` chain would corrupt both captures + the global.
+              code: `await new Promise((r) => setTimeout(r, 50));
+                     console.log("hello from ${label}");
+                     await new Promise((r) => setTimeout(r, 50));
+                     console.log("bye from ${label}");
+                     return ${JSON.stringify(label)};`,
+            },
+            { sessionID: `concurrency-${label}`, workspaceDir: workspace },
+          )
+        }),
+      ),
+    )
+
+  const [a, b] = await Promise.all([run("A", aData, aWorkspace), run("B", bData, bWorkspace)])
+
+  expect(a.output).toBe("hello from A\nbye from A\n")
+  expect(b.output).toBe("hello from B\nbye from B\n")
+  expect(JSON.parse(a.result)).toBe("A")
+  expect(JSON.parse(b.result)).toBe("B")
+  // Global console must be untouched.
+  expect(console.log).toBe(realLogBefore)
+
+  await Promise.all(
+    [aWorkspace, bWorkspace, aData, bData].map((d) => fs.rm(d, { recursive: true, force: true })),
+  )
+})

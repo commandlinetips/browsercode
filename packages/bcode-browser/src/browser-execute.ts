@@ -3,10 +3,12 @@
 // Executes a JavaScript snippet in-process against a per-opencode-session
 // `Session` (the CDP transport from `./cdp/session.ts`). No subprocess, no
 // daemon, no Unix socket, no `uv` — we wrap the snippet with
-// `new AsyncFunction("session", code)` and run it.
+// `new AsyncFunction("session", "console", code)` and run it.
 //
 // Snippet scope (Phase H hard rule #3 — workspace-as-plain-code):
 //   `session`        — the live CDP `Session`, persistent across calls.
+//   `console`        — per-call capture object shadowing the global. Same
+//                      `{log, error, warn, info}` API as the real console.
 //   standard JS globals.
 //
 // Nothing is auto-loaded. To reuse code from a previous snippet the agent
@@ -16,13 +18,17 @@
 // wrapper supplies `ctx.workspaceDir` so `.ts` files written under it can be
 // addressed by absolute path; this resolver creates the dir on first use.
 //
-// Output capture: console.log calls inside the snippet stream via a
-// monkey-patch around `console.log`/`console.error`/`console.warn`/
-// `console.info`. The originals are restored in a `finally` block — even if
-// the snippet throws, even on timeout. See
-// `memory/browsercode/phase_h_eval_feasibility_findings.md` for the verified
-// pattern (compiled-mode `bun build --compile` works on Linux x64; AsyncFunction
-// + dynamic import survive bunfs).
+// Output capture: a per-call `console` object (`{log, error, warn, info}`)
+// is bound into the snippet's lexical scope as the second AsyncFunction
+// argument. JavaScript's scope chain resolves `console.log(...)` to the
+// function parameter before reaching the global, so existing snippets keep
+// working byte-identically while the global `console` stays untouched.
+// This is concurrency-safe: two overlapping `execute` calls (different
+// opencode sessions in the same process, parallel tool calls within one
+// session, etc.) each get their own capture buffer with no global state to
+// clobber. See `memory/browsercode/phase_h_eval_feasibility_findings.md`
+// for the verified eval pattern (compiled-mode `bun build --compile` works
+// on Linux x64; AsyncFunction + dynamic import survive bunfs).
 //
 // Cancellation: JS Promises are not preemptively cancellable. A snippet
 // without `await` yield-points (e.g. `for (let i = 0; i < 1e9; i++) {}`)
@@ -44,7 +50,8 @@ const MAX_TIMEOUT_MS = 10 * 60 * 1000
 
 export const parameters = Schema.Struct({
   code: Schema.String.annotate({
-    description: "JavaScript source. Wrapped in an async function with `session` (CDP Session) bound.",
+    description:
+      "JavaScript source. Wrapped in an async function with `session` (CDP Session) and `console` (per-call capture; same `log/error/warn/info` API) bound.",
   }),
   timeout: Schema.optional(Schema.Number).annotate({
     description: `Timeout in milliseconds. Default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}.`,
@@ -117,37 +124,21 @@ export const make = Effect.fn("BrowserExecute.make")(function* (dataDir: string)
       yield* Effect.promise(() => fs.mkdir(ctx.workspaceDir, { recursive: true }))
 
       const wrapped = yield* Effect.try({
-        try: () => new AsyncFunction("session", args.code),
+        try: () => new AsyncFunction("session", "console", args.code),
         catch: (err) => new Error(`syntax error in browser_execute snippet: ${err}`),
       })
 
       let output = ""
-      const realLog = console.log
-      const realErr = console.error
-      const realWarn = console.warn
-      const realInfo = console.info
       const tee = (...a: unknown[]) => {
         output += a.map((x) => (typeof x === "string" ? x : serialize(x))).join(" ") + "\n"
         if (ctx.onChunk) Effect.runFork(ctx.onChunk(output))
       }
-      console.log = tee
-      console.error = tee
-      console.warn = tee
-      console.info = tee
+      const snippetConsole = { log: tee, error: tee, warn: tee, info: tee }
 
       const ran = yield* Effect.tryPromise({
-        try: () => wrapped(session),
+        try: () => wrapped(session, snippetConsole),
         catch: (err) => new Error(`browser_execute snippet threw: ${err instanceof Error ? err.stack ?? err.message : String(err)}`),
-      }).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            console.log = realLog
-            console.error = realErr
-            console.warn = realWarn
-            console.info = realInfo
-          }),
-        ),
-      )
+      })
 
       return { output, result: serialize(ran) } satisfies ExecuteResult
     }).pipe(
