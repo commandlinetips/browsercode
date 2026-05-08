@@ -66,4 +66,4 @@ return doc.querySelector('h1').textContent
 
 - A frame that was same-origin can become cross-origin after navigation inside it (e.g. OAuth redirect). Re-check with `contentDocument` truthiness.
 - `iframe.contentDocument === null` right after insertion — wait for `load` on the iframe before reading.
-- CSP `frame-ancestors`/`sandbox="allow-same-origin"` can block `contentDocument` access even when origins match.
+- An iframe whose `sandbox` attribute **omits** `allow-same-origin` is forced into an opaque origin even when its URL is same-origin — `contentDocument` access throws. Adding `allow-same-origin` is what restores access; its presence is not the blocker. CSP `frame-ancestors` on the iframe's response can also prevent it from loading at all.

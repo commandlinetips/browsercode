@@ -133,7 +133,17 @@ export const make = Effect.fn("BrowserExecute.make")(function* (dataDir: string)
         output += a.map((x) => (typeof x === "string" ? x : serialize(x))).join(" ") + "\n"
         if (ctx.onChunk) Effect.runFork(ctx.onChunk(output))
       }
-      const snippetConsole = { log: tee, error: tee, warn: tee, info: tee }
+      // Prototype-chain to the real `console` so uncommon methods (`debug`,
+      // `dir`, `trace`, `table`, `group`, …) don't throw when a snippet calls
+      // them. The five "log line" methods are tee'd into our capture; anything
+      // else falls through to the real console — written but not captured.
+      const snippetConsole = Object.assign(Object.create(console), {
+        log: tee,
+        error: tee,
+        warn: tee,
+        info: tee,
+        debug: tee,
+      })
 
       const ran = yield* Effect.tryPromise({
         try: () => wrapped(session, snippetConsole),

@@ -24,7 +24,7 @@ Works **without** any visible print dialog — Chrome renders the PDF server-sid
 
 Options worth knowing:
 - `landscape: true` — flip orientation
-- `displayHeaderFooter: true` + `headerTemplate` / `footerTemplate` — printed HTML (mustache-style variables: `{{pageNumber}}`, `{{totalPages}}`, `{{title}}`, `{{url}}`)
+- `displayHeaderFooter: true` + `headerTemplate` / `footerTemplate` — printed HTML. Inject values with class-tagged spans, not mustache variables: `<span class="pageNumber"></span>`, `<span class="totalPages"></span>`, `<span class="title"></span>`, `<span class="url"></span>`, `<span class="date"></span>`. Default font-size is tiny (1em ≈ 8pt) and the templates render with their own zero-margin print stylesheet, so set explicit `font-size` and `padding` if you care about layout.
 - `scale: 0.8` — shrink to fit
 - `pageRanges: '1-3,7'` — subset of pages
 - `transferMode: 'ReturnAsStream'` — for very large PDFs, returns a stream handle instead of a giant base64 blob

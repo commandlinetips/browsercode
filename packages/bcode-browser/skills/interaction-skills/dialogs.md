@@ -60,14 +60,22 @@ Tradeoffs:
 
 ## beforeunload specifically
 
-Fires when navigating away from a page with unsaved changes (forms, editors). The page freezes until the user clicks Leave/Stay.
+Fires when navigating away from a page with unsaved changes (forms, editors). The page freezes until the user clicks Leave/Stay. The dialog can open at any point during `Page.navigate`, so don't try to handle it after — race the navigate against `Page.javascriptDialogOpening`.
 
 ```js
-// Option A: dismiss after navigating (CDP, safe, undetectable)
-await session.Page.navigate({ url: 'https://new-url.com' })
+// Option A: subscribe before navigating (CDP, safe, undetectable, no race)
+await session.Page.enable()
+const off = session.onEvent(async (method, _params) => {
+  if (method === 'Page.javascriptDialogOpening') {
+    await session.Page.handleJavaScriptDialog({ accept: true })  // "Leave"
+  }
+})
 try {
-  await session.Page.handleJavaScriptDialog({ accept: true })  // "Leave"
-} catch { /* no dialog — normal */ }
+  await session.Page.navigate({ url: 'https://new-url.com' })
+  await session.waitFor('Page.loadEventFired', undefined, 10_000)
+} finally {
+  off()
+}
 
 // Option B: prevent before navigating (JS, detectable)
 await session.Runtime.evaluate({ expression: 'window.onbeforeunload = null' })

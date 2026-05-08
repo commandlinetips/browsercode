@@ -16,11 +16,20 @@ Coordinate-based typing also works if you click first, then `Input.insertText`/`
 
 ## When you need DOM inside the OOPIF
 
-Find the iframe target and route Runtime/DOM calls to it:
+Find the iframe target and route Runtime/DOM calls to it. Remember the parent's `targetId` first so you can switch back:
 
 ```js
+// Capture the parent target before switching — `session.use` doesn't expose it.
+const parentTargetId = (await session.Target.getTargets({}))
+  .targetInfos.find(t => t.type === 'page' && !t.url.startsWith('chrome://'))?.targetId
+
 const { targetInfos } = await session.Target.getTargets({})
 const iframe = targetInfos.find(t => t.type === 'iframe' && t.url.includes('stripe.com'))
+if (!iframe) {
+  // OOPIF targets are lazy. Interact with the parent input first
+  // (a coordinate click on the card-number area), then re-query Target.getTargets.
+  throw new Error('Stripe iframe target not present yet — interact and retry')
+}
 
 // Route subsequent calls to the iframe target
 await session.use(iframe.targetId)
@@ -32,7 +41,7 @@ const { result } = await session.Runtime.evaluate({
 })
 
 // Switch back to the parent page when done
-await session.use(parentTargetId)
+if (parentTargetId) await session.use(parentTargetId)
 ```
 
 `session.use(iframe.targetId)` auto-attaches if not already attached, and routes Page/DOM/Runtime/Network to it. `Target.*` and `Browser.*` always hit the browser endpoint regardless of `use`.

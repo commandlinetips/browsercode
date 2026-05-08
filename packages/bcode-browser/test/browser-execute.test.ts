@@ -131,6 +131,33 @@ test.skipIf(!enabled)("syntax error in snippet surfaces a clean failure", async 
   ).rejects.toThrow(/syntax error/)
 })
 
+// `console.debug` is captured (tee'd) and uncommon `console.*` methods
+// (`table`, `dir`, `trace`, …) fall through to the real console without
+// throwing. No Chrome required.
+test("console.debug is captured; uncommon methods fall through without throwing", async () => {
+  const data = await fs.mkdtemp(path.join(os.tmpdir(), "bcode-debug-"))
+  const ws = await fs.mkdtemp(path.join(os.tmpdir(), "bcode-debug-ws-"))
+  const result = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const impl = yield* BrowserExecute.make(data)
+        return yield* impl.execute(
+          {
+            code: `console.debug("captured-debug");
+                   console.table([{a: 1}]);
+                   console.trace("trace-call");
+                   return "ok";`,
+          },
+          { sessionID: "console-debug-test", workspaceDir: ws },
+        )
+      }),
+    ),
+  )
+  expect(result.output).toContain("captured-debug")
+  expect(JSON.parse(result.result)).toBe("ok")
+  await Promise.all([data, ws].map((d) => fs.rm(d, { recursive: true, force: true })))
+})
+
 // Concurrency safety: two overlapping execute() calls (different sessionIDs)
 // must each capture their own console output without leaking into each other
 // or into the real global console. No Chrome required — the snippets never

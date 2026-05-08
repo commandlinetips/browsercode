@@ -35,7 +35,7 @@ const { result } = await session.Runtime.evaluate({
   expression: `
     (() => {
       const t = [...document.querySelectorAll('[role="option"], li, .menu-item')]
-        .find(el => el.textContent.trim() === 'Germany')
+        .find(el => (el.textContent ?? '').trim() === 'Germany')
       if (!t) return null
       const r = t.getBoundingClientRect()
       return { x: r.x + r.width/2, y: r.y + r.height/2 }

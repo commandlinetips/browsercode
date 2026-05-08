@@ -47,9 +47,12 @@ const r = await fetch("https://api.browser-use.com/api/v3/browsers", {
   headers: { "X-Browser-Use-API-Key": process.env.BROWSER_USE_API_KEY, "Content-Type": "application/json" },
   body: "{}",
 })
-const { id, cdp_url, live_url } = await r.json()
-await session.connect({ wsUrl: cdp_url })
-console.log("liveUrl for the user to watch:", live_url)
+const body = await r.json()
+const id = body.id
+const cdpUrl = body.cdp_url ?? body.cdpUrl     // BU returns snake_case in some regions, camelCase in others
+const liveUrl = body.live_url ?? body.liveUrl
+await session.connect({ wsUrl: cdpUrl })
+console.log("liveUrl for the user to watch:", liveUrl)
 ```
 
 Requires `BROWSER_USE_API_KEY` in the environment (the user should have set this before launching bcode). If absent, tell the user to get a key at https://browser-use.com and `export BROWSER_USE_API_KEY=...`.
@@ -114,7 +117,7 @@ Cloud cleanup is your responsibility — if you're done with a cloud browser, st
 
 ## Reusing code: write to the workspace, import from snippet
 
-The agent-workspace is per-project: `./.bcode/agent-workspace/`. It's a flat directory of `.ts` files you own and edit with the standard `write`/`edit` tools. Saved scripts travel with the project (`.bcode/agent-workspace/` is committed by default), so `git clone && cd && bcode` shares them.
+The agent-workspace is per-project: `./.bcode/agent-workspace/`. It's a directory of `.ts` files you own and edit with the standard `write`/`edit` tools — flat for small projects, organized into subdirectories (`scrape/`, `auth/`, `cloud/`, …) when you accumulate enough scripts that grouping helps. Imports work at any depth; pick whatever layout makes the project easiest to navigate. Saved scripts travel with the project (`.bcode/agent-workspace/` is committed by default), so `git clone && cd && bcode` shares them.
 
 Write once, import many:
 
@@ -147,7 +150,7 @@ Cache-bust (`?t=${Date.now()}`) is your responsibility: without it, edits to the
 
 - **Top-level `import`** statements inside the snippet body are **not allowed** — the snippet is wrapped in an async function. Use `await import(...)` instead.
 - **No CPU-bound infinite loops without `await`.** JS Promises aren't preemptively cancellable; a `for (;;)` without an `await` yield-point will not respect the timeout. Insert `await new Promise(r => setTimeout(r, 0))` if you genuinely need a long compute loop.
-- `console.log`, `console.error`, `console.warn`, `console.info` are all captured and streamed to the user. Treat them as your stdout.
+- `console.log`, `console.error`, `console.warn`, `console.info`, `console.debug` are all captured and streamed to the user. Treat them as your stdout. Other `console.*` methods (`table`, `dir`, `trace`, …) work but write to bcode's stderr without being captured into the tool result.
 - The snippet's `return` value is captured separately (JSON-serialized when possible).
 
 ## When something doesn't work
