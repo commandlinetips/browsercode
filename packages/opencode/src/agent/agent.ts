@@ -91,11 +91,10 @@ export const layer = Layer.effect(
         // to whichever project is open (Phase H hard rule #3 — workspace as
         // plain code, per-project).
         const agentWorkspaceGlob = "**/.bcode/agent-workspace/**/*"
-        // Browser-skills tree shipped inside the binary, extracted at runtime
-        // to <Global.Path.data>/skills/. Read-only baseline; the agent reads
-        // BROWSER.md + interaction-skills/ when driving the browser. In dev
-        // mode the skills live inside the worktree, so this glob is a no-op
-        // there.
+        // Browser-skills tree, materialized at runtime to
+        // <Global.Path.data>/skills/ in both dev and compiled modes (so the
+        // `{{SKILLS_DIR}}` placeholder in BROWSER.md gets substituted with a
+        // stable absolute path). Read-only baseline.
         const browserSkillsGlob = path.join(Skills.skillsDir(Global.Path.data), "*")
         const whitelistedDirs = [
           Truncate.GLOB,
