@@ -29,9 +29,17 @@ const r = await fetch("https://api.browser-use.com/api/v3/browsers", {
     // proxyCountryCode: "us",       // geo-located proxy (default "us"; null disables)
   }),
 })
+// Successful provision returns 201, not 200 — `!r.ok` covers both.
 if (!r.ok) throw new Error(`provision failed: ${r.status} ${await r.text()}`)
-const { id, cdpUrl, liveUrl } = await r.json()
+const body = await r.json()
+const { id, cdpUrl, liveUrl } = body
 ```
+
+The response carries more than the three fields above. Other fields you may want:
+
+- `timeoutAt` — ISO timestamp when BU will auto-reclaim the browser. Use it to schedule a `stop` or warn the user before quota expiry.
+- `recordingUrl` — playback URL for the session recording. Surface this to the user when handing back the run.
+- `status`, `startedAt`, `finishedAt`, `proxyUsedMb`, `proxyCost`, `browserCost`, `agentSessionId` — observability fields, not needed to drive the browser.
 
 The `liveUrl` is a viewer URL the user can open in their own browser to watch the cloud browser's pixels. **Print it to console** so the user can click it:
 
@@ -43,7 +51,7 @@ Stash `id` somewhere (a `globalThis.cloudBrowserId = id` is fine, or the snippet
 
 ## Connect
 
-The `cdpUrl` from BU is an HTTP discovery endpoint (e.g. `https://cdpN.browser-use.com`), the same shape Chrome's `:9222` exposes locally, **not** a WebSocket URL. Resolve it via `/json/version`:
+The `cdpUrl` from BU is an HTTPS discovery endpoint (e.g. `https://cdpN.browser-use.com`), the same shape Chrome's `:9222` exposes locally, **not** a WebSocket URL. Resolve it via `/json/version`. The resolved URL is `wss://...` (secure WebSocket); `session.connect({ wsUrl })` handles `ws://` and `wss://` transparently, so the local-vs-cloud flow is identical from the snippet's perspective.
 
 ```js
 const ver = await fetch(`${cdpUrl}/json/version`).then(r => r.json())

@@ -31,47 +31,52 @@ For this to work the user must have, **once**, navigated to `chrome://inspect/#r
 Failure modes and what they mean:
 
 - **`connect()` throws "No running browser with remote debugging detected"** — the checkbox at `chrome://inspect/#remote-debugging` has not been ticked in any running Chrome profile, or no Chrome is running. Ask the user to open their target Chrome and tick the box.
-- **`connect()` throws with "403" / "permission" / "WS closed before open"** — the checkbox is ticked but the user hasn't clicked Allow on the popup yet. By default `connect()` errors fast (5s per candidate). To wait up to 30s for the click: pass `{ profileDir: "<abs path to user's profile>", timeoutMs: 30000 }`. Passing `profileDir` skips the OS scan and reads the WebSocket URL straight from `<profileDir>/DevToolsActivePort` — works on every Chrome version including 144+ which doesn't serve `/json/version`.
+- **`connect()` throws with "403" / "permission" / "WS closed before open"** — the checkbox is ticked but the user hasn't clicked Allow on the popup yet. By default `connect()` errors fast (5s per candidate). To wait up to 30s for the click: pass `{ profileDir: "<abs path to user's profile>", timeoutMs: 30000 }`. Passing `profileDir` skips the OS scan and reads the WebSocket URL straight from `<profileDir>/DevToolsActivePort`. Note: this works for Way 1 (the user's existing profile) on every Chrome version including 144+. For Way 2 (a fresh profile launched with `--user-data-dir`), Chrome 147+ has been observed to not write this file — see Way 2 below for the `/json/version` route.
 
 **Way 2 — connect to a Chrome you (or the user) launched with a debug port (isolated profile, no popups, ever).** Right choice for unattended automation, or whenever popup interruptions are unacceptable.
 
-Launch Chrome with `--remote-debugging-port=<port> --user-data-dir=<path>`:
+Launch Chrome with `--remote-debugging-port=<port> --user-data-dir=<path>`. Pick any path the agent's tools can write to — a project-local directory like `./.bcode/way2-chrome` is a safe default; `/tmp/...` works wherever the sandbox allows it.
 
 ```bash
 # Linux
-google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/bcode-chrome
+google-chrome --remote-debugging-port=9222 --user-data-dir=./.bcode/way2-chrome
 
 # macOS
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-port=9222 --user-data-dir=/tmp/bcode-chrome
+  --remote-debugging-port=9222 --user-data-dir=./.bcode/way2-chrome
 
 # Windows (cmd.exe)
 "C:\Program Files\Google\Chrome\Application\chrome.exe" ^
-  --remote-debugging-port=9222 --user-data-dir=C:\bcode-chrome
+  --remote-debugging-port=9222 --user-data-dir=.\.bcode\way2-chrome
 
 # Windows (PowerShell)
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" `
-  --remote-debugging-port=9222 --user-data-dir=C:\bcode-chrome
+  --remote-debugging-port=9222 --user-data-dir=.\.bcode\way2-chrome
 ```
 
-Then connect to it from a snippet — pass the same `--user-data-dir` value as `profileDir` and `connect()` reads the live WebSocket URL out of `<profileDir>/DevToolsActivePort`:
+Then resolve the live WebSocket URL via `/json/version` and connect:
 
 ```js
-await session.connect({ profileDir: "/tmp/bcode-chrome" })   // or "C:\\bcode-chrome" on Windows
+const ver = await fetch("http://127.0.0.1:9222/json/version").then(r => r.json())
+await session.connect({ wsUrl: ver.webSocketDebuggerUrl })
 ```
+
+This is the canonical Way 2 path. Works on every Chrome that serves `/json/version` (every Chromium-based browser launched with `--remote-debugging-port`).
+
+**Older / alternate path: `{ profileDir }`.** On older Chrome (pre-147) and on the chrome://inspect Way 1 path, Chrome writes a `DevToolsActivePort` file inside the user-data-dir, and `session.connect({ profileDir: "<same path as --user-data-dir>" })` reads the WS URL directly from it — no HTTP probe. Chrome 147+ has been observed (macOS, Windows) to NOT write this file when launched with a custom `--user-data-dir`, so this path no longer works for Way 2 on modern Chrome. Use it only if `/json/version` is unavailable.
 
 Two precisions on the `--user-data-dir`:
 
 - **It must not be Chrome's platform default.** Chrome 136 and later silently no-op the `--remote-debugging-port` flag when `--user-data-dir` is the platform default, even if you pass it explicitly. The platform defaults are `%LOCALAPPDATA%\Google\Chrome\User Data` on Windows, `~/Library/Application Support/Google/Chrome` on macOS, `~/.config/google-chrome` on Linux. An empty or new path gives a fresh clean profile that Chrome will persist there across future launches.
 - **You cannot reuse the user's everyday Chrome profile by copying its files into a custom directory.** Chrome will accept the flag and start, so it looks like it works — but cookies are encrypted under a key bound to the *original* directory and will not survive the copy. Bookmarks and extensions transfer; logged-in sessions do not. If you need the user's real logins, use Way 1.
 
-If you have a `wsUrl` directly (e.g. from `fetch("http://127.0.0.1:9222/json/version").then(r => r.json()).then(j => j.webSocketDebuggerUrl)`), you can also pass it as the escape hatch:
+The bare `ws://host:port/devtools/browser` form (no UUID suffix) does not work — Chrome's browser-level endpoint includes a per-process UUID. Always resolve via `/json/version` first.
 
-```js
-await session.connect({ wsUrl: "ws://127.0.0.1:9222/devtools/browser/<uuid>" })
-```
+**Way 2 troubleshooting:**
 
-The bare `ws://host:port/devtools/browser` form (no UUID suffix) does not work — Chrome's browser-level endpoint includes a per-process UUID. Prefer `{ profileDir }` unless you specifically need the WS URL form.
+- **Chrome's launch log prints `DevTools listening on ws://...:<port>/...` before the bind succeeds.** That line is not a reliable readiness signal: if the port is already taken, you'll see the line immediately followed by `bind() failed: Address already in use` and Chrome exits. Confirm the port is actually open with `curl http://127.0.0.1:<port>/json/version` (or fetch from a snippet) before connecting.
+- **Windows: launching Chrome while any other Chrome is already running silently hands the new flags off to the existing process** — `--remote-debugging-port` is ignored. Kill all `chrome.exe` first (or use a unique `--user-data-dir` and accept that some Windows builds still no-op).
+- **`{ profileDir }` raises ENOENT on `DevToolsActivePort`** — Chrome 147+ doesn't write this file under custom `--user-data-dir`. Use the `/json/version` route above instead.
 
 **Way 3 — provision and connect to a Browser Use cloud browser.** Best when the user can't see the browser, you need a clean profile, geo-located proxy, or fingerprint isolation. Read `{{SKILLS_DIR}}/cloud-browser.md` for the full pattern (provision, stop, swap profile/proxy). Briefly:
 
@@ -82,9 +87,10 @@ const r = await fetch("https://api.browser-use.com/api/v3/browsers", {
   body: "{}",
 })
 const { id, cdpUrl, liveUrl } = await r.json()
-// BU's cdpUrl is the HTTP discovery endpoint (e.g. https://cdpN.browser-use.com),
+// BU's cdpUrl is the HTTPS discovery endpoint (e.g. https://cdpN.browser-use.com),
 // not a WebSocket URL. Resolve it like a remote Chrome: fetch /json/version and
-// use the webSocketDebuggerUrl field.
+// use the webSocketDebuggerUrl field. The resolved URL is `wss://...` (secure);
+// `session.connect({ wsUrl })` handles both `ws://` and `wss://` transparently.
 const ver = await fetch(`${cdpUrl}/json/version`).then(r => r.json())
 await session.connect({ wsUrl: ver.webSocketDebuggerUrl })
 console.log("liveUrl for the user to watch:", liveUrl)
@@ -196,5 +202,5 @@ Cache-bust (`?t=${Date.now()}`) is your responsibility: without it, edits to the
 - **`session.Page.navigate` hangs forever** → the page is showing a native dialog. Use `session.Page.handleJavaScriptDialog({ accept: true })` to dismiss.
 - **Selectors don't find elements that you can see** → likely an iframe or shadow DOM. Read `{{SKILLS_DIR}}/interaction-skills/iframes.md` or `shadow-dom.md`.
 - **Actions silently no-op** → the page is mid-load. After `Page.navigate`, await `session.waitFor("Page.loadEventFired")` before driving inputs.
-- **Connection refused, 403, or `WS closed before open` on connect()** → see the Way 1 failure-mode list above. Most often: the `chrome://inspect/#remote-debugging` checkbox isn't ticked, or the Chrome 144+ "Allow remote debugging?" popup hasn't been clicked. Pass `{ profileDir, timeoutMs: 30000 }` to wait up to 30s for the click, or fall back to Way 2.
+- **Connection refused, 403, or `WS closed before open` on connect()** → see the Way 1 failure-mode list above. Most often: the `chrome://inspect/#remote-debugging` checkbox isn't ticked, or the Chrome 144+ "Allow remote debugging?" popup hasn't been clicked. Pass `{ profileDir, timeoutMs: 30000 }` (Way 1, user's profile) to wait up to 30s for the click, or fall back to Way 2.
 - **Cloud `connect()` fails after a successful provision** → check that `cdp_url` came back in the POST response; some BU regions return `cdpUrl` (camelCase) — accept both. See `{{SKILLS_DIR}}/cloud-browser.md`.
