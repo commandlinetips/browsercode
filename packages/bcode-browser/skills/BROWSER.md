@@ -13,31 +13,63 @@ Use the `browser_execute` tool to run JavaScript against a connected browser via
 
 ## Connecting
 
-You always call `session.connect(...)` once at the start of your work. The `Session` is fresh on the first `browser_execute` call of an opencode session; subsequent calls reuse it. Three connection methods, in order of preference for typical tasks:
+You always call `session.connect(...)` once at the start of your work. The `Session` is fresh on the first `browser_execute` call of an opencode session; subsequent calls reuse it. Three connection methods, in order of preference for typical tasks.
 
-**Way 1 — connect to the user's running Chrome (real profile, popup-gated).** Best when the task involves the user's actual logged-in sites.
+For most tasks where the agent acts on behalf of the user in their normal browser, use **Way 1**. For automation that runs without the user watching, or any case where popup interruptions are unacceptable, use **Way 2** or a cloud browser. Cloud is only used when the user opts in.
+
+**Way 1 — connect to the user's running Chrome (real profile, popup-gated).** Inherits the user's everyday Chrome logins, extensions, history, and bookmarks. Right choice when the task involves the user's actual logged-in sites.
 
 ```js
 // Auto-detect the most-recently-launched Chrome with remote debugging enabled.
 await session.connect()
 ```
 
-The user must have ticked "Allow remote debugging for this browser instance" once at `chrome://inspect/#remote-debugging` (sticky per-profile), and on Chrome 144+ click "Allow" on the in-browser popup at first attach. If `connect()` fails with a 403/permission message, ask the user to do this. To wait for the click instead of erroring fast, pass `{ profileDir: "/abs/path", timeoutMs: 30000 }`.
+For this to work the user must have, **once**, navigated to `chrome://inspect/#remote-debugging` in their target Chrome and ticked "Allow remote debugging for this browser instance". This setting is per-profile and sticky: tick it once and it persists across every future Chrome launch of that profile. On Chrome 144 and later, the first attach also triggers an in-browser "Allow remote debugging?" popup that the user must click Allow on. The popup may reappear on later attaches under conditions that are not fully characterized — daemon restart, browser restart, time elapsed, version-dependent options like "Allow for N hours" — so be ready to ask the user to click Allow again if a previously working connection starts 403'ing.
 
-**Way 2 — connect to a Chrome you (or the user) launched with a debug port (isolated profile, no popups).** Best for unattended automation.
+Failure modes and what they mean:
+
+- **`connect()` throws "No running browser with remote debugging detected"** — the checkbox at `chrome://inspect/#remote-debugging` has not been ticked in any running Chrome profile, or no Chrome is running. Ask the user to open their target Chrome and tick the box.
+- **`connect()` throws with "403" / "permission" / "WS closed before open"** — the checkbox is ticked but the user hasn't clicked Allow on the popup yet. By default `connect()` errors fast (5s per candidate). To wait up to 30s for the click: pass `{ profileDir: "<abs path to user's profile>", timeoutMs: 30000 }`. Passing `profileDir` skips the OS scan and reads the WebSocket URL straight from `<profileDir>/DevToolsActivePort` — works on every Chrome version including 144+ which doesn't serve `/json/version`.
+
+**Way 2 — connect to a Chrome you (or the user) launched with a debug port (isolated profile, no popups, ever).** Right choice for unattended automation, or whenever popup interruptions are unacceptable.
+
+Launch Chrome with `--remote-debugging-port=<port> --user-data-dir=<path>`:
 
 ```bash
-# User runs this once (or you run it via the `bash` tool):
+# Linux
 google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/bcode-chrome
+
+# macOS
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 --user-data-dir=/tmp/bcode-chrome
+
+# Windows (cmd.exe)
+"C:\Program Files\Google\Chrome\Application\chrome.exe" ^
+  --remote-debugging-port=9222 --user-data-dir=C:\bcode-chrome
+
+# Windows (PowerShell)
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+  --remote-debugging-port=9222 --user-data-dir=C:\bcode-chrome
 ```
+
+Then connect to it from a snippet — pass the same `--user-data-dir` value as `profileDir` and `connect()` reads the live WebSocket URL out of `<profileDir>/DevToolsActivePort`:
 
 ```js
-await session.connect({ wsUrl: "ws://127.0.0.1:9222/devtools/browser" })
-// or, if you know the profile dir:
-await session.connect({ profileDir: "/tmp/bcode-chrome" })
+await session.connect({ profileDir: "/tmp/bcode-chrome" })   // or "C:\\bcode-chrome" on Windows
 ```
 
-The `--user-data-dir` must NOT be Chrome's platform default (`%LOCALAPPDATA%\Google\Chrome\User Data` on Windows, `~/Library/Application Support/Google/Chrome` on macOS, `~/.config/google-chrome` on Linux) — Chrome 136+ silently no-ops the port flag in that case.
+Two precisions on the `--user-data-dir`:
+
+- **It must not be Chrome's platform default.** Chrome 136 and later silently no-op the `--remote-debugging-port` flag when `--user-data-dir` is the platform default, even if you pass it explicitly. The platform defaults are `%LOCALAPPDATA%\Google\Chrome\User Data` on Windows, `~/Library/Application Support/Google/Chrome` on macOS, `~/.config/google-chrome` on Linux. An empty or new path gives a fresh clean profile that Chrome will persist there across future launches.
+- **You cannot reuse the user's everyday Chrome profile by copying its files into a custom directory.** Chrome will accept the flag and start, so it looks like it works — but cookies are encrypted under a key bound to the *original* directory and will not survive the copy. Bookmarks and extensions transfer; logged-in sessions do not. If you need the user's real logins, use Way 1.
+
+If you have a `wsUrl` directly (e.g. from `fetch("http://127.0.0.1:9222/json/version").then(r => r.json()).then(j => j.webSocketDebuggerUrl)`), you can also pass it as the escape hatch:
+
+```js
+await session.connect({ wsUrl: "ws://127.0.0.1:9222/devtools/browser/<uuid>" })
+```
+
+The bare `ws://host:port/devtools/browser` form (no UUID suffix) does not work — Chrome's browser-level endpoint includes a per-process UUID. Prefer `{ profileDir }` unless you specifically need the WS URL form.
 
 **Way 3 — provision and connect to a Browser Use cloud browser.** Best when the user can't see the browser, you need a clean profile, geo-located proxy, or fingerprint isolation. Read `{{SKILLS_DIR}}/cloud-browser.md` for the full pattern (provision, stop, swap profile/proxy). Briefly:
 
@@ -158,5 +190,5 @@ Cache-bust (`?t=${Date.now()}`) is your responsibility: without it, edits to the
 - **`session.Page.navigate` hangs forever** → the page is showing a native dialog. Use `session.Page.handleJavaScriptDialog({ accept: true })` to dismiss.
 - **Selectors don't find elements that you can see** → likely an iframe or shadow DOM. Read `{{SKILLS_DIR}}/interaction-skills/iframes.md` or `shadow-dom.md`.
 - **Actions silently no-op** → the page is mid-load. After `Page.navigate`, await `session.waitFor("Page.loadEventFired")` before driving inputs.
-- **Connection refused or 403 on connect()** → Chrome wasn't started with `--remote-debugging-port`, or the user hasn't clicked "Allow" on the remote-debugging prompt. Pass `{ profileDir, timeoutMs: 30000 }` to wait for the click, or fall back to Way 2.
+- **Connection refused, 403, or `WS closed before open` on connect()** → see the Way 1 failure-mode list above. Most often: the `chrome://inspect/#remote-debugging` checkbox isn't ticked, or the Chrome 144+ "Allow remote debugging?" popup hasn't been clicked. Pass `{ profileDir, timeoutMs: 30000 }` to wait up to 30s for the click, or fall back to Way 2.
 - **Cloud `connect()` fails after a successful provision** → check that `cdp_url` came back in the POST response; some BU regions return `cdpUrl` (camelCase) — accept both. See `{{SKILLS_DIR}}/cloud-browser.md`.
