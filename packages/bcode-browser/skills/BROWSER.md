@@ -5,11 +5,11 @@ Use the `browser_execute` tool to run JavaScript against a connected browser via
 **Locations:**
 
 - Workspace (read/write your reusable scripts): `<projectRoot>/.bcode/agent-workspace/`. The bcode CLI runs from the project root, so `./.bcode/agent-workspace/foo.ts` works directly with the `read`/`write`/`edit` tools.
-- Skills (read-only reference docs): `{{SKILLS_DIR}}/`. Run `read {{SKILLS_DIR}}/interaction-skills/` to list every available interaction skill before reading any one of them.
+- Skills (read-only reference docs): `{{SKILLS_DIR}}/`. Currently `BROWSER.md` (this file) and `cloud-browser.md`.
 
 ## The model in one paragraph
 
-`browser_execute` evaluates whatever JS you write against `session`. There is no auto-loaded library, no privileged file, no helper namespace — just `session` and standard JS globals. To reuse code from a previous snippet, save it as a `.ts` file under `./.bcode/agent-workspace/` (using the `write` tool) and `await import("/abs/path?t=" + Date.now())` it from a later snippet. The import takes an **absolute** path — construct it from `process.cwd()` inside the snippet. Same mechanism for a 5-line wrapper and a 500-line script. Skills under `{{SKILLS_DIR}}/` are documentation you `read`, not modules you `import` — they teach you the CDP patterns; you write the code.
+`browser_execute` evaluates whatever JS you write against `session`. There is no auto-loaded library, no privileged file, no helper namespace — just `session` and standard JS globals. To reuse code from a previous snippet, save it as a `.ts` file under `./.bcode/agent-workspace/` (using the `write` tool) and `await import("/abs/path?t=" + Date.now())` it from a later snippet. The import takes an **absolute** path — construct it from `process.cwd()` inside the snippet. Same mechanism for a 5-line wrapper and a 500-line script.
 
 ## Connecting
 
@@ -148,8 +148,6 @@ await session.Page.captureScreenshot({ format: "png" })
 // for the rare case you want to process it programmatically.
 ```
 
-For the full menu of UI mechanics — dropdowns, dialogs, iframes, shadow DOM, uploads, scrolling, screenshots-with-highlights — list `{{SKILLS_DIR}}/interaction-skills/` to see all available topics, then read the relevant one.
-
 ## Switching browsers mid-session
 
 You own the connection. To swap:
@@ -202,7 +200,7 @@ Cache-bust (`?t=${Date.now()}`) is your responsibility: without it, edits to the
 ## When something doesn't work
 
 - **`session.Page.navigate` hangs forever** → the page is showing a native dialog. Use `session.Page.handleJavaScriptDialog({ accept: true })` to dismiss.
-- **Selectors don't find elements that you can see** → likely an iframe or shadow DOM. Read `{{SKILLS_DIR}}/interaction-skills/iframes.md` or `shadow-dom.md`.
+- **Selectors don't find elements that you can see** → likely an iframe or shadow DOM. Walk frames via `Page.getFrameTree` / `Target.attachToTarget`, or pierce shadow roots with `element.shadowRoot.querySelector(...)`.
 - **Actions silently no-op** → the page is mid-load. After `Page.navigate`, await `session.waitFor("Page.loadEventFired")` before driving inputs.
 - **Connection refused, 403, or `WS closed before open` on connect()** → see the Way 1 failure-mode list above. Most often: the `chrome://inspect/#remote-debugging` checkbox isn't ticked, or the Chrome 144+ "Allow remote debugging?" popup hasn't been clicked. Pass `{ profileDir, timeoutMs: 30000 }` (Way 1, user's profile) to wait up to 30s for the click, or fall back to Way 2.
 - **Cloud `connect()` fails after a successful provision** → check that `cdp_url` came back in the POST response; some BU regions return `cdpUrl` (camelCase) — accept both. See `{{SKILLS_DIR}}/cloud-browser.md`.

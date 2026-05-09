@@ -10,5 +10,3 @@ Snippet scope:
 - standard JS globals (`console.log` etc. stream back to the user; `process.env` is available for reading `BROWSER_USE_API_KEY` etc.).
 
 Top-level `import` is not allowed inside a snippet. To reuse code across calls, save it as a `.ts` file under `./.bcode/agent-workspace/` (per-project, tracked-by-default in git) and `await import("/abs/path?t=" + Date.now())` it from a later snippet.
-
-For UI-mechanic recipes, list `{{SKILLS_DIR}}/interaction-skills/` to see all available topics, then `read` the relevant ones. Skills are documentation; they document what to write, never what to import.
