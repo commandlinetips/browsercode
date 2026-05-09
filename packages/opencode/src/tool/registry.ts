@@ -33,6 +33,7 @@ import path from "path"
 import { pathToFileURL } from "url"
 import { Effect, Layer, Context } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/unstable/http"
+import { FetchUse } from "@browser-use/bcode-browser/fetch-use"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { Ripgrep } from "../file/ripgrep"
@@ -85,6 +86,7 @@ export const layer: Layer.Layer<
   | AppFileSystem.Service
   | Bus.Service
   | HttpClient.HttpClient
+  | FetchUse.Service
   | ChildProcessSpawner
   | Ripgrep.Service
   | Format.Service
@@ -349,6 +351,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(Instruction.defaultLayer),
     Layer.provide(AppFileSystem.defaultLayer),
     Layer.provide(Bus.layer),
+    Layer.provide(FetchUse.layer),
     Layer.provide(FetchHttpClient.layer),
     Layer.provide(Format.defaultLayer),
     Layer.provide(CrossSpawnSpawner.defaultLayer),

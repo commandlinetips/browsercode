@@ -19,6 +19,7 @@ import { LSP } from "@/lsp/lsp"
 import { Instruction } from "@/session/instruction"
 import { Bus } from "@/bus"
 import { FetchHttpClient } from "effect/unstable/http"
+import { FetchUse } from "@browser-use/bcode-browser/fetch-use"
 import { Format } from "@/format"
 import { Ripgrep } from "@/file/ripgrep"
 import * as Truncate from "@/tool/truncate"
@@ -42,6 +43,7 @@ const registryLayer = ToolRegistry.layer.pipe(
   Layer.provide(Instruction.defaultLayer),
   Layer.provide(AppFileSystem.defaultLayer),
   Layer.provide(Bus.layer),
+  Layer.provide(FetchUse.layer),
   Layer.provide(FetchHttpClient.layer),
   Layer.provide(Format.defaultLayer),
   Layer.provide(node),

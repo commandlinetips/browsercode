@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { FetchUse } from "@browser-use/bcode-browser/fetch-use"
 import * as Tool from "./tool"
 import TurndownService from "turndown"
 import DESCRIPTION from "./webfetch.txt"
@@ -24,6 +25,7 @@ export const WebFetchTool = Tool.define(
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
     const httpOk = HttpClient.filterStatusOk(http)
+    const fetchUse = yield* FetchUse.Service
 
     return {
       description: DESCRIPTION,
@@ -47,61 +49,77 @@ export const WebFetchTool = Tool.define(
 
           const timeout = Math.min((params.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000, MAX_TIMEOUT)
 
-          // Build Accept header based on requested format with q parameters for fallbacks
-          let acceptHeader = "*/*"
-          switch (params.format) {
-            case "markdown":
-              acceptHeader = "text/markdown;q=1.0, text/x-markdown;q=0.9, text/plain;q=0.8, text/html;q=0.7, */*;q=0.1"
-              break
-            case "text":
-              acceptHeader = "text/plain;q=1.0, text/markdown;q=0.9, text/html;q=0.8, */*;q=0.1"
-              break
-            case "html":
-              acceptHeader =
-                "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.8, text/markdown;q=0.7, */*;q=0.1"
-              break
-            default:
-              acceptHeader =
-                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
-          }
-          const headers = {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-            Accept: acceptHeader,
-            "Accept-Language": "en-US,en;q=0.9",
-          }
+          // BrowserCode: when fetch-use is enabled (BROWSER_USE_API_KEY set,
+          // BCODE_NO_FETCH_USE != "1"), proxy through it for Chrome JA4
+          // fingerprinting + HTTP/2 header order. Falls back to native
+          // HttpClient with cloudflare-retry when disabled.
+          const { arrayBuffer, contentType } = yield* (fetchUse.enabled
+            ? fetchUse
+                .fetch(params.url, { timeoutMs: timeout })
+                .pipe(Effect.map((r) => ({ arrayBuffer: r.body, contentType: r.contentType })))
+            : Effect.gen(function* () {
+                // Build Accept header based on requested format with q parameters for fallbacks
+                let acceptHeader = "*/*"
+                switch (params.format) {
+                  case "markdown":
+                    acceptHeader =
+                      "text/markdown;q=1.0, text/x-markdown;q=0.9, text/plain;q=0.8, text/html;q=0.7, */*;q=0.1"
+                    break
+                  case "text":
+                    acceptHeader = "text/plain;q=1.0, text/markdown;q=0.9, text/html;q=0.8, */*;q=0.1"
+                    break
+                  case "html":
+                    acceptHeader =
+                      "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.8, text/markdown;q=0.7, */*;q=0.1"
+                    break
+                  default:
+                    acceptHeader =
+                      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+                }
+                const headers = {
+                  "User-Agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+                  Accept: acceptHeader,
+                  "Accept-Language": "en-US,en;q=0.9",
+                }
 
-          const request = HttpClientRequest.get(params.url).pipe(HttpClientRequest.setHeaders(headers))
+                const request = HttpClientRequest.get(params.url).pipe(HttpClientRequest.setHeaders(headers))
 
-          // Retry with honest UA if blocked by Cloudflare bot detection (TLS fingerprint mismatch)
-          const response = yield* httpOk.execute(request).pipe(
-            Effect.catchIf(
-              (err) =>
-                err.reason._tag === "StatusCodeError" &&
-                err.reason.response.status === 403 &&
-                err.reason.response.headers["cf-mitigated"] === "challenge",
-              () =>
-                httpOk.execute(
-                  HttpClientRequest.get(params.url).pipe(
-                    HttpClientRequest.setHeaders({ ...headers, "User-Agent": "browsercode" }),
+                // Retry with honest UA if blocked by Cloudflare bot detection (TLS fingerprint mismatch)
+                const response = yield* httpOk.execute(request).pipe(
+                  Effect.catchIf(
+                    (err) =>
+                      err.reason._tag === "StatusCodeError" &&
+                      err.reason.response.status === 403 &&
+                      err.reason.response.headers["cf-mitigated"] === "challenge",
+                    () =>
+                      httpOk.execute(
+                        HttpClientRequest.get(params.url).pipe(
+                          HttpClientRequest.setHeaders({ ...headers, "User-Agent": "browsercode" }),
+                        ),
+                      ),
                   ),
-                ),
-            ),
-            Effect.timeoutOrElse({ duration: timeout, orElse: () => Effect.die(new Error("Request timed out")) }),
-          )
+                  Effect.timeoutOrElse({ duration: timeout, orElse: () => Effect.die(new Error("Request timed out")) }),
+                )
 
-          // Check content length
-          const contentLength = response.headers["content-length"]
-          if (contentLength && parseInt(contentLength) > MAX_RESPONSE_SIZE) {
-            throw new Error("Response too large (exceeds 5MB limit)")
-          }
+                // Check content length
+                const contentLength = response.headers["content-length"]
+                if (contentLength && parseInt(contentLength) > MAX_RESPONSE_SIZE) {
+                  throw new Error("Response too large (exceeds 5MB limit)")
+                }
 
-          const arrayBuffer = yield* response.arrayBuffer
+                const arrayBuffer = yield* response.arrayBuffer
+                if (arrayBuffer.byteLength > MAX_RESPONSE_SIZE) {
+                  throw new Error("Response too large (exceeds 5MB limit)")
+                }
+
+                return { arrayBuffer, contentType: response.headers["content-type"] || "" }
+              }))
+
           if (arrayBuffer.byteLength > MAX_RESPONSE_SIZE) {
             throw new Error("Response too large (exceeds 5MB limit)")
           }
 
-          const contentType = response.headers["content-type"] || ""
           const mime = contentType.split(";")[0]?.trim().toLowerCase() || ""
           const title = `${params.url} (${contentType})`
 

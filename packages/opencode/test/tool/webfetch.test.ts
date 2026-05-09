@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import { Effect, Layer } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
+import { FetchUse } from "@browser-use/bcode-browser/fetch-use"
 import { Agent } from "../../src/agent/agent"
 import { Truncate } from "@/tool/truncate"
 import { Instance } from "../../src/project/instance"
@@ -31,7 +32,9 @@ function exec(args: { url: string; format: "text" | "markdown" | "html" }) {
   return WebFetchTool.pipe(
     Effect.flatMap((info) => info.init()),
     Effect.flatMap((tool) => tool.execute(args, ctx)),
-    Effect.provide(Layer.mergeAll(FetchHttpClient.layer, Truncate.defaultLayer, Agent.defaultLayer)),
+    Effect.provide(
+      Layer.mergeAll(FetchUse.layer.pipe(Layer.provide(FetchHttpClient.layer)), FetchHttpClient.layer, Truncate.defaultLayer, Agent.defaultLayer),
+    ),
     Effect.runPromise,
   )
 }
