@@ -63,20 +63,30 @@ export class Session implements Transport {
   /**
    * Connect to Chrome's browser-level WebSocket.
    *
-   * With no args, runs auto-detect: scans OS-specific profile dirs via
-   * `detectBrowsers()` and tries each candidate (most-recently-launched first)
-   * until a WebSocket open succeeds. Each attempt has a short timeout so
-   * dead ports and permission-denied (403) candidates fail fast and the
-   * loop moves on.
+   * With no args, picks a browser in this precedence:
+   *   1. `BU_CDP_WS` / `BU_CDP_URL` env var — single fixed endpoint, used
+   *      by eval harnesses and CI to hand the agent a preconfigured browser.
+   *      If set, we connect there; failure does NOT fall through to scan
+   *      (the harness's intent is binding — silently using a different
+   *      browser is the worse failure mode).
+   *   2. OS scan via `detectBrowsers()` — try each candidate
+   *      (most-recently-launched first) until a WebSocket open succeeds.
+   *      Each attempt has a short timeout so dead ports and 403s fail
+   *      fast and the loop moves on.
    *
-   * With explicit opts ({ wsUrl } | { profileDir } | { port }), connects
-   * directly to that single URL with a generous timeout.
+   * With explicit opts ({ wsUrl } | { profileDir }), env vars are ignored
+   * and we connect directly to the supplied endpoint.
    */
   async connect(opts: ConnectOptions = {}): Promise<void> {
     const timeoutMs = opts.timeoutMs ?? 5_000;
     if (opts.wsUrl || opts.profileDir) {
       const wsUrl = await resolveWsUrl(opts);
       await this.openWs(wsUrl, timeoutMs);
+      return;
+    }
+    const envWsUrl = process.env.BU_CDP_WS ?? process.env.BU_CDP_URL;
+    if (envWsUrl) {
+      await this.openWs(envWsUrl, timeoutMs);
       return;
     }
     const browsers = await detectBrowsers();

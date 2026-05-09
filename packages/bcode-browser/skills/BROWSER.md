@@ -17,6 +17,8 @@ You always call `session.connect(...)` once at the start of your work. The `Sess
 
 For most tasks where the agent acts on behalf of the user in their normal browser, use **Way 1**. For automation that runs without the user watching, or any case where popup interruptions are unacceptable, use **Way 2** or a cloud browser. Cloud is only used when the user opts in.
 
+**Preconfigured environments (eval harnesses, CI).** If `BU_CDP_WS` (or its alias `BU_CDP_URL`) is set in the environment, `session.connect()` with no args connects to that endpoint directly — no OS scan, no cloud provision. The harness has already chosen the browser for you; just call `await session.connect()` and start driving. Explicit `{ wsUrl }` / `{ profileDir }` calls ignore the env var.
+
 **Way 1 — connect to the user's running Chrome (real profile, popup-gated).** Inherits the user's everyday Chrome logins, extensions, history, and bookmarks. Right choice when the task involves the user's actual logged-in sites.
 
 ```js
