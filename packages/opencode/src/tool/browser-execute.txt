@@ -4,6 +4,8 @@ Use this tool whenever the task requires driving a real browser — automation, 
 
 Before the first `browser_execute` call of a session, you MUST read `{{SKILLS_DIR}}/BROWSER.md`. It defines the snippet model, the three connection methods (local user Chrome, isolated debug-port Chrome, Browser Use cloud browser), the workspace pattern, the `session` API surface, and gotchas. For cloud-browser specifics, also read `{{SKILLS_DIR}}/cloud-browser.md`.
 
+Always pass a clear, concise `description` of what the snippet does in 3-7 words (e.g. "Connect to local Chrome", "Scrape product titles", "Screenshot homepage"). It surfaces in the TUI as the call's title.
+
 Snippet scope:
 
 - `session` — the live CDP `Session`. You call `session.connect(...)` once at the start of your work; subsequent snippets reuse the same connection. Domain methods follow `session.<Domain>.<method>(params)` and return Promises.

@@ -41,11 +41,13 @@ The response carries more than the three fields above. Other fields you may want
 - `recordingUrl` — playback URL for the session recording. Surface this to the user when handing back the run.
 - `status`, `startedAt`, `finishedAt`, `proxyUsedMb`, `proxyCost`, `browserCost`, `agentSessionId` — observability fields, not needed to drive the browser.
 
-The `liveUrl` is a viewer URL the user can open in their own browser to watch the cloud browser's pixels. **Print it to console** so the user can click it:
+The `liveUrl` is a viewer URL the user can open in their own browser to watch the cloud browser's pixels. **Print it to console** so the user can see it:
 
 ```js
 console.log("Cloud browser ready. Live view:", liveUrl)
 ```
+
+If the user later asks for the link in a clickable form (e.g. "give me the live url"), surface it in your reply as a markdown link — `[Live view](<liveUrl>)` — which the TUI renders clickable. Tool stdout is not auto-linkified, but markdown in your assistant message is.
 
 Stash `id` somewhere (a `globalThis.cloudBrowserId = id` is fine, or the snippet's return value) — you need it to stop the browser later.
 

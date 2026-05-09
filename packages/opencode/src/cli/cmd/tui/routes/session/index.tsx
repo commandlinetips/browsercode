@@ -1883,7 +1883,7 @@ function BrowserExecute(props: ToolProps<typeof BrowserExecuteTool>) {
     <Switch>
       <Match when={props.metadata.output !== undefined}>
         <BlockTool
-          title="# Browser execute"
+          title={`# ${props.input.description ?? "Browser execute"}`}
           part={props.part}
           spinner={isRunning()}
           onClick={overflow() ? () => setExpanded((prev) => !prev) : undefined}

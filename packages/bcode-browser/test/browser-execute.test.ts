@@ -38,6 +38,7 @@ test.skipIf(!enabled)("connect + console.log + return value", async () => {
         const impl = yield* BrowserExecute.make(dataDir)
         return yield* impl.execute(
           {
+            description: "Connect to local Chrome",
             code: `await session.connect({ profileDir: ${JSON.stringify(profileDir!)}, timeoutMs: 5000 });
                    console.log("connected", session.isConnected());
                    return { ok: session.isConnected() };`,
@@ -58,6 +59,7 @@ test.skipIf(!enabled)("Session is reused across calls (SessionStore)", async () 
         const impl = yield* BrowserExecute.make(dataDir)
         return yield* impl.execute(
           {
+            description: "Verify session reuse",
             code: `// connect was called in the previous test on the same sessionID.
                    console.log("still connected:", session.isConnected());
                    return session.isConnected();`,
@@ -99,6 +101,7 @@ test.skipIf(!enabled)("workspace import inside a snippet", async () => {
         const impl = yield* BrowserExecute.make(dataDir)
         return yield* impl.execute(
           {
+            description: "Import workspace module",
             code: `const m = await import(${JSON.stringify(file)} + "?t=" + Date.now());
                    const t = await m.run(session);
                    console.log("title:", t);
@@ -120,6 +123,7 @@ test.skipIf(!enabled)("Page.captureScreenshot is collected into result.screensho
         const impl = yield* BrowserExecute.make(dataDir)
         return yield* impl.execute(
           {
+            description: "Capture two screenshots",
             code: `await session.Page.enable();
                    await session.Page.navigate({ url: "data:text/html,<title>shot</title><body>hi" });
                    await session.waitFor("Page.loadEventFired", undefined, 5000);
@@ -151,6 +155,7 @@ test.skipIf(!enabled)("BCODE_SCREENSHOT_DIR dumps screenshots to disk", async ()
           const impl = yield* BrowserExecute.make(dataDir)
           return yield* impl.execute(
             {
+              description: "Dump screenshot to disk",
               code: `await session.Page.captureScreenshot({ format: "png" });`,
             },
             { sessionID, workspaceDir },
@@ -178,6 +183,7 @@ test.skipIf(!enabled)("syntax error in snippet surfaces a clean failure", async 
           const impl = yield* BrowserExecute.make(dataDir)
           return yield* impl.execute(
             {
+              description: "Trigger syntax error",
               code: `const x = (`,
             },
             { sessionID, workspaceDir },
@@ -200,6 +206,7 @@ test("console.debug is captured; uncommon methods fall through without throwing"
         const impl = yield* BrowserExecute.make(data)
         return yield* impl.execute(
           {
+            description: "Exercise console methods",
             code: `console.debug("captured-debug");
                    console.table([{a: 1}]);
                    console.trace("trace-call");
@@ -234,6 +241,7 @@ test("overlapping execute calls do not clobber each other's console capture", as
           const impl = yield* BrowserExecute.make(dataDirX)
           return yield* impl.execute(
             {
+              description: `Concurrent snippet ${label}`,
               // Yield once so both snippets' bodies are mid-execution at the same
               // time; under the old global-patch impl, B's tee would shadow A's
               // and the `finally` chain would corrupt both captures + the global.
