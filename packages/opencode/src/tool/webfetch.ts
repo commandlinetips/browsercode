@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { FetchUse } from "@browser-use/bcode-browser/fetch-use"
+import { Config } from "@/config/config"
 import * as Tool from "./tool"
 import TurndownService from "turndown"
 import DESCRIPTION from "./webfetch.txt"
@@ -26,6 +27,7 @@ export const WebFetchTool = Tool.define(
     const http = yield* HttpClient.HttpClient
     const httpOk = HttpClient.filterStatusOk(http)
     const fetchUse = yield* FetchUse.Service
+    const config = yield* Config.Service
 
     return {
       description: DESCRIPTION,
@@ -49,11 +51,10 @@ export const WebFetchTool = Tool.define(
 
           const timeout = Math.min((params.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000, MAX_TIMEOUT)
 
-          // BrowserCode: when fetch-use is enabled (BROWSER_USE_API_KEY set,
-          // BCODE_NO_FETCH_USE != "1"), proxy through it for Chrome JA4
-          // fingerprinting + HTTP/2 header order. Falls back to native
-          // HttpClient with cloudflare-retry when disabled.
-          const { arrayBuffer, contentType } = yield* (fetchUse.enabled
+          // BrowserCode: route through fetch-use when BROWSER_USE_API_KEY is
+          // set and the user hasn't opted out via experimental.fetch_use=false.
+          const useFu = fetchUse.enabled && (yield* config.get()).experimental?.fetch_use !== false
+          const { arrayBuffer, contentType } = yield* (useFu
             ? fetchUse
                 .fetch(params.url, { timeoutMs: timeout })
                 .pipe(Effect.map((r) => ({ arrayBuffer: r.body, contentType: r.contentType })))

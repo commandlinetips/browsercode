@@ -263,6 +263,10 @@ export const Info = Schema.Struct({
       mcp_timeout: Schema.optional(PositiveInt).annotate({
         description: "Timeout in milliseconds for model context protocol (MCP) requests",
       }),
+      fetch_use: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Route webfetch through the Browser Use fetch-use proxy when BROWSER_USE_API_KEY is set. Defaults to true; set false to opt out (still costs but uses native HttpClient instead).",
+      }),
     }),
   ),
 })
