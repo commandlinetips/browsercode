@@ -25,16 +25,12 @@ const r = await fetch("https://api.browser-use.com/api/v3/browsers", {
   headers: { "X-Browser-Use-API-Key": apiKey, "Content-Type": "application/json" },
   body: JSON.stringify({
     // All optional — omit for an ephemeral fresh-profile browser with no proxy.
-    // profile_id: "<uuid>",          // attach an existing BU profile
-    // proxy_country_code: "us",      // geo-located proxy
+    // profileId: "<uuid>",          // attach an existing BU profile
+    // proxyCountryCode: "us",       // geo-located proxy (default "us"; null disables)
   }),
 })
 if (!r.ok) throw new Error(`provision failed: ${r.status} ${await r.text()}`)
-const body = await r.json()
-// Some BU regions return camelCase, others snake_case. Accept both.
-const id = body.id
-const cdpUrl = body.cdp_url ?? body.cdpUrl
-const liveUrl = body.live_url ?? body.liveUrl
+const { id, cdpUrl, liveUrl } = await r.json()
 ```
 
 The `liveUrl` is a viewer URL the user can open in their own browser to watch the cloud browser's pixels. **Print it to console** so the user can click it:
@@ -47,8 +43,12 @@ Stash `id` somewhere (a `globalThis.cloudBrowserId = id` is fine, or the snippet
 
 ## Connect
 
+The `cdpUrl` from BU is an HTTP discovery endpoint (e.g. `https://cdpN.browser-use.com`), the same shape Chrome's `:9222` exposes locally, **not** a WebSocket URL. Resolve it via `/json/version`:
+
 ```js
-await session.connect({ wsUrl: cdpUrl })
+const ver = await fetch(`${cdpUrl}/json/version`).then(r => r.json())
+await session.connect({ wsUrl: ver.webSocketDebuggerUrl })
+
 const targets = (await session.Target.getTargets({})).targetInfos
 const page = targets.find(t => t.type === "page")
 await session.use(page.targetId)
@@ -64,7 +64,7 @@ When you're done, stop the browser. BU's quotas and idle reclaim will eventually
 await fetch(`https://api.browser-use.com/api/v3/browsers/${id}`, {
   method: "PATCH",
   headers: { "X-Browser-Use-API-Key": apiKey, "Content-Type": "application/json" },
-  body: JSON.stringify({ state: "stop" }),
+  body: JSON.stringify({ action: "stop" }),
 })
 ```
 
@@ -79,7 +79,7 @@ To switch from one cloud browser to another (e.g. different proxy country) withi
 await fetch(`https://api.browser-use.com/api/v3/browsers/${oldId}`, {
   method: "PATCH",
   headers: { "X-Browser-Use-API-Key": apiKey, "Content-Type": "application/json" },
-  body: JSON.stringify({ state: "stop" }),
+  body: JSON.stringify({ action: "stop" }),
 })
 
 // Close the local Session's WS so connect() opens a fresh one.
@@ -106,24 +106,23 @@ export async function provision(opts: { profileId?: string; proxyCountryCode?: s
     method: "POST",
     headers: { "X-Browser-Use-API-Key": key(), "Content-Type": "application/json" },
     body: JSON.stringify({
-      profile_id: opts.profileId,
-      proxy_country_code: opts.proxyCountryCode,
+      profileId: opts.profileId,
+      proxyCountryCode: opts.proxyCountryCode,
     }),
   })
   if (!r.ok) throw new Error(`provision failed: ${r.status} ${await r.text()}`)
-  const body = await r.json()
-  return {
-    id: body.id as string,
-    cdpUrl: (body.cdp_url ?? body.cdpUrl) as string,
-    liveUrl: (body.live_url ?? body.liveUrl) as string,
-  }
+  const body = (await r.json()) as { id: string; cdpUrl: string; liveUrl: string }
+  // BU's cdpUrl is an HTTP discovery endpoint; resolve to the WS URL once
+  // here so callers can pass `wsUrl` straight to `session.connect`.
+  const ver = await fetch(`${body.cdpUrl}/json/version`).then(r => r.json())
+  return { id: body.id, wsUrl: ver.webSocketDebuggerUrl as string, liveUrl: body.liveUrl }
 }
 
 export async function stop(id: string) {
   const r = await fetch(`${API}/${id}`, {
     method: "PATCH",
     headers: { "X-Browser-Use-API-Key": key(), "Content-Type": "application/json" },
-    body: JSON.stringify({ state: "stop" }),
+    body: JSON.stringify({ action: "stop" }),
   })
   if (!r.ok) throw new Error(`stop failed: ${r.status} ${await r.text()}`)
 }
@@ -133,9 +132,9 @@ Then any snippet does:
 
 ```js
 const { provision, stop } = await import(`${process.cwd()}/.bcode/agent-workspace/cloud.ts?t=${Date.now()}`)
-const { id, cdpUrl, liveUrl } = await provision({ proxyCountryCode: "us" })
+const { id, wsUrl, liveUrl } = await provision({ proxyCountryCode: "us" })
 console.log("Live view:", liveUrl)
-await session.connect({ wsUrl: cdpUrl })
+await session.connect({ wsUrl })
 // ... do work ...
 await stop(id)
 ```

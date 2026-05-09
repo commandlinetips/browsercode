@@ -81,11 +81,12 @@ const r = await fetch("https://api.browser-use.com/api/v3/browsers", {
   headers: { "X-Browser-Use-API-Key": process.env.BROWSER_USE_API_KEY, "Content-Type": "application/json" },
   body: "{}",
 })
-const body = await r.json()
-const id = body.id
-const cdpUrl = body.cdp_url ?? body.cdpUrl     // BU returns snake_case in some regions, camelCase in others
-const liveUrl = body.live_url ?? body.liveUrl
-await session.connect({ wsUrl: cdpUrl })
+const { id, cdpUrl, liveUrl } = await r.json()
+// BU's cdpUrl is the HTTP discovery endpoint (e.g. https://cdpN.browser-use.com),
+// not a WebSocket URL. Resolve it like a remote Chrome: fetch /json/version and
+// use the webSocketDebuggerUrl field.
+const ver = await fetch(`${cdpUrl}/json/version`).then(r => r.json())
+await session.connect({ wsUrl: ver.webSocketDebuggerUrl })
 console.log("liveUrl for the user to watch:", liveUrl)
 ```
 
