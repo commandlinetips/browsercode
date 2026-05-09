@@ -43,6 +43,8 @@ export const layer = Layer.effect(
           const response = yield* HttpClient.filterStatusOk(http).execute(request)
           const data = (yield* response.json) as unknown as FetchUseRaw
           if (data.error) return yield* Effect.fail(new Error(`fetch-use: ${data.error}`))
+          // Mirror native path's filterStatusOk: surface upstream HTTP errors as failures.
+          if (data.status_code >= 400) return yield* Effect.fail(new Error(`fetch-use: HTTP ${data.status_code}`))
           const body = data.is_binary && data.body_base64
             ? (new Uint8Array(Buffer.from(data.body_base64, "base64")).buffer as ArrayBuffer)
             : (new TextEncoder().encode(data.body ?? "").buffer as ArrayBuffer)
