@@ -45,6 +45,7 @@ import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { drizzle } from "drizzle-orm/bun-sqlite"
 import { ensureProcessMetadata } from "@opencode-ai/core/util/opencode-process"
+import { trace } from "@opentelemetry/api"
 
 const processMetadata = ensureProcessMetadata("main")
 
@@ -245,6 +246,20 @@ try {
   }
   process.exitCode = 1
 } finally {
+  // Drain any registered OTel span processors (e.g. bcode-laminar) before
+  // exiting. The plugin's `session.idle` event handler is invoked
+  // fire-and-forget (`packages/opencode/src/plugin/index.ts:249`), so its
+  // `processor.forceFlush()` Promise was never awaited — without this drain,
+  // `process.exit()` kills any in-flight gRPC export and the final agent
+  // span is lost. Bounded with a 3 s race so a wedged exporter cannot hang
+  // bcode on exit. Generic to any OTel-based plugin, not laminar-specific.
+  const provider = trace.getTracerProvider() as { forceFlush?: () => Promise<void> }
+  if (provider.forceFlush) {
+    await Promise.race([
+      provider.forceFlush().catch(() => {}),
+      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+    ])
+  }
   // Some subprocesses don't react properly to SIGTERM and similar signals.
   // Most notably, some docker-container-based MCP servers don't handle such signals unless
   // run using `docker run --init`.
