@@ -81,7 +81,7 @@ export class Session implements Transport {
   async connect(opts: ConnectOptions = {}): Promise<void> {
     const timeoutMs = opts.timeoutMs ?? 5_000;
     if (opts.wsUrl || opts.profileDir) {
-      const wsUrl = await resolveWsUrl(opts);
+      const wsUrl = await resolveWsUrl(opts, timeoutMs);
       await this.openWs(wsUrl, timeoutMs);
       return;
     }
@@ -268,10 +268,10 @@ function isBrowserLevel(method: string): boolean {
  * For auto-detect, call `session.connect()` with no args — it iterates
  * `detectBrowsers()` and picks the first browser whose WS accepts.
  */
-export async function resolveWsUrl(opts: ConnectOptions): Promise<string> {
+export async function resolveWsUrl(opts: ConnectOptions, timeoutMs: number): Promise<string> {
   if (opts.wsUrl) return opts.wsUrl;
   if (opts.profileDir) {
-    const { port, path } = await readDevToolsActivePort(opts.profileDir);
+    const { port, path } = await readDevToolsActivePort(opts.profileDir, timeoutMs);
     return `ws://127.0.0.1:${port}${path}`;
   }
   throw new Error('resolveWsUrl needs { wsUrl } or { profileDir }. For auto-detect, call session.connect() directly.');
@@ -282,13 +282,19 @@ export async function resolveWsUrl(opts: ConnectOptions): Promise<string> {
  *   line 1: port number
  *   line 2: path (e.g. "/devtools/browser/<uuid>")
  * With both in hand we can build `ws://host:port<path>` with no HTTP probe.
+ *
+ * Note: Chrome 147+ has been observed to NOT write this file when launched
+ * with a custom `--user-data-dir` (verified on macOS and Windows). For Way 2
+ * with modern Chrome, prefer the `/json/version` -> wsUrl route instead.
  */
-async function readDevToolsActivePort(profileDir: string): Promise<{ port: number; path: string }> {
-  const deadline = Date.now() + 30_000;
+async function readDevToolsActivePort(profileDir: string, timeoutMs: number): Promise<{ port: number; path: string }> {
+  const filePath = `${profileDir}/DevToolsActivePort`;
+  const start = Date.now();
+  const deadline = start + timeoutMs;
   let lastErr: unknown;
   while (Date.now() < deadline) {
     try {
-      const text = (await Bun.file(`${profileDir}/DevToolsActivePort`).text()).trim();
+      const text = (await Bun.file(filePath).text()).trim();
       const [portStr, path] = text.split('\n');
       const port = Number(portStr);
       if (!Number.isFinite(port)) throw new Error(`malformed port line: ${portStr}`);
@@ -302,7 +308,12 @@ async function readDevToolsActivePort(profileDir: string): Promise<{ port: numbe
       await Bun.sleep(250);
     }
   }
-  throw new Error(`Could not read ${profileDir}/DevToolsActivePort after 30s: ${lastErr}`);
+  const elapsed = Date.now() - start;
+  throw new Error(
+    `Polled ${filePath} for ${elapsed}ms (timeoutMs=${timeoutMs}): ${lastErr}. ` +
+    `Note: Chrome 147+ may not write this file when launched with --user-data-dir. ` +
+    `Try the /json/version fallback: fetch("http://127.0.0.1:<port>/json/version") -> webSocketDebuggerUrl, then session.connect({ wsUrl }).`,
+  );
 }
 
 /**
