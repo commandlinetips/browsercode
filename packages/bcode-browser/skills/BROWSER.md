@@ -78,7 +78,7 @@ The bare `ws://host:port/devtools/browser` form (no UUID suffix) does not work �
 - **Windows: launching Chrome while any other Chrome is already running silently hands the new flags off to the existing process** — `--remote-debugging-port` is ignored. Kill all `chrome.exe` first (or use a unique `--user-data-dir` and accept that some Windows builds still no-op).
 - **`{ profileDir }` raises ENOENT on `DevToolsActivePort`** — Chrome 147+ doesn't write this file under custom `--user-data-dir`. Use the `/json/version` route above instead.
 
-**Way 3 — provision and connect to a Browser Use cloud browser.** Best when the user can't see the browser, you need a clean profile, geo-located proxy, or fingerprint isolation. Read `{{SKILLS_DIR}}/cloud-browser.md` for the full pattern (provision, stop, swap profile/proxy). Briefly:
+**Way 3 — provision and connect to a Browser Use cloud browser.** Best when the user can't see the browser, you need a clean profile, geo-located proxy, or fingerprint isolation. BU cloud browsers also auto-solve captchas (Cloudflare Turnstile, reCAPTCHA, hCaptcha) — when you land on one, just stop driving and `await new Promise(r => setTimeout(r, 10000))`; the solver runs server-side and the page advances on its own. Local browsers (Way 1, Way 2) do not have this. Read `{{SKILLS_DIR}}/cloud-browser.md` for the full pattern (provision, stop, swap profile/proxy). Briefly:
 
 ```js
 const r = await fetch("https://api.browser-use.com/api/v3/browsers", {
