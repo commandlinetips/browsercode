@@ -145,7 +145,7 @@ const serialize = (v: unknown): string => {
 
 // Snippet executor. The CDP Session is resolved per-call from `SessionStore`
 // keyed on `ctx.sessionID`. The agent connects with `await session.connect(...)`
-// in one snippet (Way 1 / Way 2 / Way 3 in BROWSER.md); the Session persists
+// in one snippet (Way 1 / Way 2 / Way 3 in browser-execute-guide.md); the Session persists
 // for follow-up snippets in the same opencode session.
 //
 // `dataDir` is opencode's XDG_DATA_HOME for bcode (~/.local/share/bcode/ on

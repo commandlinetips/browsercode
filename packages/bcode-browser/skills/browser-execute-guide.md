@@ -1,11 +1,11 @@
-# BROWSER.md — driving a real browser with `browser_execute`
+# browser-execute-guide.md — driving a real browser with `browser_execute`
 
 Use the `browser_execute` tool to run JavaScript against a connected browser via the Chrome DevTools Protocol. The snippet runs in-process; `session` is bound to a long-lived CDP `Session` that persists across calls within the same bcode session. You connect once, drive many.
 
 **Locations:**
 
 - Workspace (read/write your reusable scripts): `<projectRoot>/.bcode/agent-workspace/`. The bcode CLI runs from the project root, so `./.bcode/agent-workspace/foo.ts` works directly with the `read`/`write`/`edit` tools.
-- Skills (read-only reference docs): `{{SKILLS_DIR}}/`. Currently `BROWSER.md` (this file) and `cloud-browser.md`.
+- Skills (read-only reference docs): `{{SKILLS_DIR}}/`. Currently `browser-execute-guide.md` (this file) and `cloud-browser.md`.
 
 ## The model in one paragraph
 

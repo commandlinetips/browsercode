@@ -25,7 +25,7 @@ export const BrowserExecuteTool = Tool.define(
   Effect.gen(function* () {
     const impl = yield* BrowserExecute.make(Global.Path.data)
     return {
-      // Substitute the resolved skills path so BROWSER.md / cloud-browser.md
+      // Substitute the resolved skills path so browser-execute-guide.md / cloud-browser.md
       // references in the description point at concrete locations. Workspace
       // is per-project and agent-discoverable from cwd, so it's not
       // substituted here.

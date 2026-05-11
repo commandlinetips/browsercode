@@ -2,7 +2,7 @@
 //
 // Materializes the skills tree to `<dataDir>/skills/` and substitutes the
 // `{{SKILLS_DIR}}` placeholder in every file with that absolute path so
-// cross-references inside BROWSER.md (``read `{{SKILLS_DIR}}/cloud-browser.md` ``)
+// cross-references inside browser-execute-guide.md (``read `{{SKILLS_DIR}}/cloud-browser.md` ``)
 // point at a real location.
 //
 // Compiled launches (the user-facing path) read a one-line sentinel at

@@ -14,7 +14,7 @@ test("resolveSkillsDir materializes skills with {{SKILLS_DIR}} substituted", asy
   try {
     const dir = await Skills.resolveSkillsDir(dataDir)
     expect(dir).toBe(path.join(dataDir, "skills"))
-    const browser = (await fs.readFile(path.join(dir, "BROWSER.md"), "utf8")).replaceAll("\\", "/")
+    const browser = (await fs.readFile(path.join(dir, "browser-execute-guide.md"), "utf8")).replaceAll("\\", "/")
     expect(browser).not.toContain("{{SKILLS_DIR}}")
     expect(browser).toContain(`${dir.replaceAll("\\", "/")}/cloud-browser.md`)
   } finally {
@@ -29,8 +29,8 @@ test("different dataDirs get their own substituted paths", async () => {
     const dirA = await Skills.resolveSkillsDir(a)
     const dirB = await Skills.resolveSkillsDir(b)
     const [browserA, browserB] = (await Promise.all([
-      fs.readFile(path.join(dirA, "BROWSER.md"), "utf8"),
-      fs.readFile(path.join(dirB, "BROWSER.md"), "utf8"),
+      fs.readFile(path.join(dirA, "browser-execute-guide.md"), "utf8"),
+      fs.readFile(path.join(dirB, "browser-execute-guide.md"), "utf8"),
     ])).map((s) => s.replaceAll("\\", "/"))
     const [a2, b2] = [dirA.replaceAll("\\", "/"), dirB.replaceAll("\\", "/")]
     expect(browserA).toContain(a2)

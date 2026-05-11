@@ -1,14 +1,7 @@
-Execute JavaScript against a connected browser via the BrowserCode CDP harness.
+Executes JavaScript in a connected browser.
 
-Use this tool whenever the task requires driving a real browser — automation, scraping, end-to-end testing, or interactive exploration. The snippet runs in-process with one persistent CDP `Session` object that survives across calls in the same opencode session. You connect once and drive many.
-
-Before the first `browser_execute` call of a session, you MUST read `{{SKILLS_DIR}}/BROWSER.md`. It defines the snippet model, the three connection methods (local user Chrome, isolated debug-port Chrome, Browser Use cloud browser), the workspace pattern, the `session` API surface, and gotchas. For cloud-browser specifics, also read `{{SKILLS_DIR}}/cloud-browser.md`.
-
-Always pass a clear, concise `description` of what the snippet does in 3-7 words (e.g. "Connect to local Chrome", "Scrape product titles", "Screenshot homepage"). It surfaces in the TUI as the call's title.
-
-Snippet scope:
-
-- `session` — the live CDP `Session`. You call `session.connect(...)` once at the start of your work; subsequent snippets reuse the same connection. Domain methods follow `session.<Domain>.<method>(params)` and return Promises.
-- standard JS globals (`console.log` etc. stream back to the user; `process.env` is available for reading `BROWSER_USE_API_KEY` etc.).
-
-Top-level `import` is not allowed inside a snippet. To reuse code across calls, save it as a `.ts` file under `./.bcode/agent-workspace/` (per-project, tracked-by-default in git) and `await import("/abs/path?t=" + Date.now())` it from a later snippet.
+Usage:
+- Use this tool whenever the task requires driving a real browser.
+- Use this tool to read webpages that block the webfetch tool.
+- IMPORTANT: you MUST use the Read tool first to read `{{SKILLS_DIR}}/browser-execute-guide.md`. This tool will fail if you did not read these directions first.
+- Always pass a clear, precise, and low verbosity `description` of what the JS snippet does.

@@ -1,6 +1,6 @@
 # cloud-browser.md — Browser Use cloud browser via raw HTTP
 
-When BROWSER.md sent you here, the user wants a Browser Use cloud browser (Way 3): a clean isolated Chrome on BU's infrastructure, optionally with a geo-located proxy or a synced profile, with a `liveUrl` the user can open to watch you work.
+When browser-execute-guide.md sent you here, the user wants a Browser Use cloud browser (Way 3): a clean isolated Chrome on BU's infrastructure, optionally with a geo-located proxy or a synced profile, with a `liveUrl` the user can open to watch you work.
 
 There is no `browser_open_cloud` tool. You write the HTTP calls yourself in a `browser_execute` snippet. This keeps the connection model symmetric (you also call `session.connect()` for local browsers in Way 1 and Way 2) and gives you full control over the BU API surface — provision, stop, swap profiles, change proxies, anything BU exposes.
 
@@ -78,7 +78,7 @@ await fetch(`https://api.browser-use.com/api/v3/browsers/${id}`, {
 })
 ```
 
-If you'll do this often within one project, save it as `./.bcode/agent-workspace/cloud.ts` (see BROWSER.md "Reusing code") and import it from later snippets.
+If you'll do this often within one project, save it as `./.bcode/agent-workspace/cloud.ts` (see browser-execute-guide.md "Reusing code") and import it from later snippets.
 
 ## Swap
 
