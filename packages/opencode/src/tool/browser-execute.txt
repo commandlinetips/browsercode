@@ -1,7 +1,7 @@
-Executes JavaScript in a connected browser.
+Executes JavaScript in a browser via CDP.
 
 Usage:
 - Use this tool whenever the task requires driving a real browser.
 - Use this tool to read webpages that block the webfetch tool.
 - IMPORTANT: you MUST use the Read tool first to read `{{SKILLS_DIR}}/browser-execute-guide.md`. This tool will fail if you did not read these directions first.
-- Always pass a clear, precise, and low verbosity `description` of what the JS snippet does.
+- Returns console output from the snippet; screenshots taken attach automatically as images.

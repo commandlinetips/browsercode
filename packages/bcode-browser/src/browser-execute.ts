@@ -56,14 +56,14 @@ const MAX_TIMEOUT_MS = 10 * 60 * 1000
 export const parameters = Schema.Struct({
   code: Schema.String.annotate({
     description:
-      "JavaScript source. Wrapped in an async function with `session` (CDP Session) and `console` (per-call capture; same `log/error/warn/info` API) bound.",
+      "The JavaScript snippet to execute. `session` (CDP Session) and `console` are in scope; see browser-execute-guide.md for the snippet model.",
   }),
   timeout: Schema.optional(Schema.Number).annotate({
-    description: `Timeout in milliseconds. Default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}.`,
+    description: `Optional timeout in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS})`,
   }),
   description: Schema.String.annotate({
     description:
-      "Clear, concise summary of what this snippet does in 3-7 words. Examples:\nInput: code that connects to local Chrome\nOutput: Connect to local Chrome\n\nInput: scrape product titles from current page\nOutput: Scrape product titles\n\nInput: capture a screenshot of the homepage\nOutput: Screenshot homepage",
+      "Clear, concise description of what this snippet does in 3-7 words. Examples:\nInput: code that connects to local Chrome\nOutput: Connect to local Chrome\n\nInput: scrape product titles from current page\nOutput: Scrape product titles\n\nInput: capture a screenshot of the homepage\nOutput: Screenshot homepage",
   }),
 })
 
