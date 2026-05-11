@@ -1,7 +1,9 @@
 # BrowserCode
 
 An AI coding agent that drives real browsers. Forks
-[anomalyco/opencode](https://github.com/anomalyco/opencode).
+[anomalyco/opencode](https://github.com/anomalyco/opencode) and ships a
+TypeScript port of
+[browser-use/browser-harness](https://github.com/browser-use/browser-harness).
 
 ## Install
 
