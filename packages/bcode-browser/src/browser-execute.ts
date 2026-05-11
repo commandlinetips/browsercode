@@ -49,17 +49,21 @@ import { Skills } from "./skills"
 const DEFAULT_TIMEOUT_MS = 60 * 1000
 const MAX_TIMEOUT_MS = 10 * 60 * 1000
 
+// Field order matters: providers stream tool-call args in schema-declared
+// order, so the model commits to whichever field comes first. `code` is the
+// substantive output; `description` is a summary written after the code
+// exists, mirroring the shell tool's `command` → ... → `description` shape.
 export const parameters = Schema.Struct({
-  description: Schema.String.annotate({
-    description:
-      "Clear, concise summary of what this snippet does in 3-7 words. Examples:\nInput: code that connects to local Chrome\nOutput: Connect to local Chrome\n\nInput: scrape product titles from current page\nOutput: Scrape product titles\n\nInput: capture a screenshot of the homepage\nOutput: Screenshot homepage",
-  }),
   code: Schema.String.annotate({
     description:
       "JavaScript source. Wrapped in an async function with `session` (CDP Session) and `console` (per-call capture; same `log/error/warn/info` API) bound.",
   }),
   timeout: Schema.optional(Schema.Number).annotate({
     description: `Timeout in milliseconds. Default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}.`,
+  }),
+  description: Schema.String.annotate({
+    description:
+      "Clear, concise summary of what this snippet does in 3-7 words. Examples:\nInput: code that connects to local Chrome\nOutput: Connect to local Chrome\n\nInput: scrape product titles from current page\nOutput: Scrape product titles\n\nInput: capture a screenshot of the homepage\nOutput: Screenshot homepage",
   }),
 })
 
