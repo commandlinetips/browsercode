@@ -51,9 +51,10 @@ export const WebFetchTool = Tool.define(
 
           const timeout = Math.min((params.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000, MAX_TIMEOUT)
 
-          // BrowserCode: route through fetch-use when BROWSER_USE_API_KEY is
-          // set and the user hasn't opted out via experimental.fetch_use=false.
-          const useFu = fetchUse.enabled && (yield* config.get()).experimental?.fetch_use !== false
+          // BrowserCode: route through fetch-use only when BROWSER_USE_API_KEY
+          // is set AND the user has opted in via experimental.fetch_use=true.
+          // Default is off: enabling adds latency without measurable accuracy gains.
+          const useFu = fetchUse.enabled && (yield* config.get()).experimental?.fetch_use === true
           const { arrayBuffer, contentType } = yield* (useFu
             ? fetchUse
                 .fetch(params.url, { timeoutMs: timeout })

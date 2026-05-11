@@ -3,7 +3,7 @@
 // Unit: layer is constructible, `enabled` reflects BROWSER_USE_API_KEY presence.
 // Live: when the key is set, end-to-end POST to fetch.browser-use.com returns
 //       body bytes + content-type. Skipped without the key. Config-based
-//       opt-out (experimental.fetch_use=false) is enforced in webfetch.ts,
+//       opt-in (experimental.fetch_use=true) is enforced in webfetch.ts,
 //       not here.
 
 import { expect, test } from "bun:test"
