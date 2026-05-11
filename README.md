@@ -1,7 +1,8 @@
 # BrowserCode
 
 An AI coding agent that drives real browsers. Forks
-[anomalyco/opencode](https://github.com/anomalyco/opencode) and vendors
+[anomalyco/opencode](https://github.com/anomalyco/opencode) and ships a
+TypeScript port of
 [browser-use/browser-harness](https://github.com/browser-use/browser-harness).
 
 ## Install
@@ -11,14 +12,14 @@ curl -fsSL https://bcode.sh/install | bash
 ```
 
 Installs `bcode` to `~/.bcode/bin`. macOS, Linux, and Windows (Git Bash).
-Also requires `uv` ([install](https://astral.sh/uv/install.sh)) and Chrome
-with `chrome://inspect` enabled (or `BU_CDP_WS` set to a remote CDP endpoint).
+Requires Chrome with `chrome://inspect` enabled (or `BU_CDP_WS` set to a
+remote CDP endpoint).
 
 ## What's different from opencode
 
-- One new tool, `browser_execute(python)`, that runs Python against a
-  long-lived browser daemon. The daemon connects to your real Chrome via CDP
-  and persists across calls within a session.
+- One new tool, `browser_execute(code)`, that runs JavaScript/TypeScript
+  in a real browser via CDP. The CDP session persists across calls within
+  an agent session.
 - Everything else from opencode works the same. Same providers, same TUI,
   same config (`opencode.json`).
 
@@ -32,9 +33,6 @@ bun run --cwd packages/opencode dev
 ```
 
 Needs `bun >= 1.3.13` plus the runtime prereqs above.
-
-The first `browser_execute` call builds a Python venv at
-`packages/bcode-browser/harness/.venv/` (cold ~15s, warm ~50ms after).
 
 ## Configure browser permission
 
@@ -55,15 +53,13 @@ The first `browser_execute` call builds a Python venv at
 
 - `packages/opencode/` — vendored from `anomalyco/opencode` (treat as
   upstream; modifications are deliberate exceptions).
-- `packages/bcode-browser/` — BrowserCode-specific code:
-  - `src/` — `browser_execute` Effect service.
-  - `harness/` — vendored from `browser-use/browser-harness`.
+- `packages/bcode-browser/` — BrowserCode-specific code: in-process CDP
+  harness, `browser_execute` implementation, embedded skills.
 
 ## Maintenance docs
 
-- `UPSTREAM.md` — modification zones, sync log against both upstreams.
+- `UPSTREAM.md` — modification zones, sync log.
 - `opencode-sync.md` — runbook for syncing from anomalyco/opencode.
-- `harness-sync.md` — runbook for syncing from browser-use/browser-harness.
 - `AGENTS.md` — code style + maintenance notes for agents working in this repo.
 - `install.sh` — what `bcode.sh/install` serves.
 
