@@ -49,17 +49,21 @@ import { Skills } from "./skills"
 const DEFAULT_TIMEOUT_MS = 60 * 1000
 const MAX_TIMEOUT_MS = 10 * 60 * 1000
 
+// Field order matters: providers stream tool-call args in schema-declared
+// order, so the model commits to whichever field comes first. `code` is the
+// substantive output; `description` is a summary written after the code
+// exists, mirroring the shell tool's `command` → ... → `description` shape.
 export const parameters = Schema.Struct({
-  description: Schema.String.annotate({
-    description:
-      "Clear, concise summary of what this snippet does in 3-7 words. Examples:\nInput: code that connects to local Chrome\nOutput: Connect to local Chrome\n\nInput: scrape product titles from current page\nOutput: Scrape product titles\n\nInput: capture a screenshot of the homepage\nOutput: Screenshot homepage",
-  }),
   code: Schema.String.annotate({
     description:
-      "JavaScript source. Wrapped in an async function with `session` (CDP Session) and `console` (per-call capture; same `log/error/warn/info` API) bound.",
+      "The JavaScript snippet to execute. `session` (CDP Session) and `console` are in scope; see browser-execute-guide.md for the snippet model.",
   }),
   timeout: Schema.optional(Schema.Number).annotate({
-    description: `Timeout in milliseconds. Default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}.`,
+    description: `Optional timeout in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS})`,
+  }),
+  description: Schema.String.annotate({
+    description:
+      "Clear, concise description of what this snippet does in 3-7 words. Examples:\nInput: code that connects to local Chrome\nOutput: Connect to local Chrome\n\nInput: scrape product titles from current page\nOutput: Scrape product titles\n\nInput: capture a screenshot of the homepage\nOutput: Screenshot homepage",
   }),
 })
 
@@ -141,7 +145,7 @@ const serialize = (v: unknown): string => {
 
 // Snippet executor. The CDP Session is resolved per-call from `SessionStore`
 // keyed on `ctx.sessionID`. The agent connects with `await session.connect(...)`
-// in one snippet (Way 1 / Way 2 / Way 3 in BROWSER.md); the Session persists
+// in one snippet (Way 1 / Way 2 / Way 3 in browser-execute-guide.md); the Session persists
 // for follow-up snippets in the same opencode session.
 //
 // `dataDir` is opencode's XDG_DATA_HOME for bcode (~/.local/share/bcode/ on

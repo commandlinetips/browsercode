@@ -93,7 +93,7 @@ export const layer = Layer.effect(
         const agentWorkspaceGlob = "**/.bcode/agent-workspace/**/*"
         // Browser-skills tree, materialized at runtime to
         // <Global.Path.data>/skills/ in both dev and compiled modes (so the
-        // `{{SKILLS_DIR}}` placeholder in BROWSER.md gets substituted with a
+        // `{{SKILLS_DIR}}` placeholder in browser-execute-guide.md gets substituted with a
         // stable absolute path). Read-only baseline.
         const browserSkillsGlob = path.join(Skills.skillsDir(Global.Path.data), "*")
         const whitelistedDirs = [
