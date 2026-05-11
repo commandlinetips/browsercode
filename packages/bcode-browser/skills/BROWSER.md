@@ -98,7 +98,7 @@ console.log("liveUrl for the user to watch:", liveUrl)
 
 Requires `BROWSER_USE_API_KEY` in the environment (the user should have set this before launching bcode). If absent, tell the user to get a key at https://browser-use.com and `export BROWSER_USE_API_KEY=...`.
 
-`webfetch` can be enhanced with `fetch-use` (Chrome TLS fingerprint + residential proxy + session cookies) when `BROWSER_USE_API_KEY` is set. Off by default — enable in `opencode.json` with `experimental.fetch_use: true`. Each request is free but consumes a small amount of proxy bandwidth from the BU account and adds latency vs. native HttpClient.
+When `BROWSER_USE_API_KEY` is set, `webfetch` is automatically enhanced with `fetch-use` (Chrome TLS fingerprint + residential proxy + session cookies) — each request is free, but consumes a small amount of proxy bandwidth from the BU account. Disable in `opencode.json` with `experimental.fetch_use: false`.
 
 ## Attaching to a target
 
