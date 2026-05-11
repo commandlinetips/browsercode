@@ -25,10 +25,10 @@ export const BrowserExecuteTool = Tool.define(
   Effect.gen(function* () {
     const impl = yield* BrowserExecute.make(Global.Path.data)
     return {
-      // Substitute the resolved skills path so browser-execute-guide.md / cloud-browser.md
-      // references in the description point at concrete locations. Workspace
-      // is per-project and agent-discoverable from cwd, so it's not
-      // substituted here.
+      // Substitute the resolved skills path so `{{SKILLS_DIR}}` references in
+      // the description point at a concrete location. Workspace is
+      // per-project and agent-discoverable from cwd, so it's not substituted
+      // here.
       description: DESCRIPTION.replaceAll("{{SKILLS_DIR}}", impl.skillsDir),
       parameters: impl.parameters,
       execute: (args: Schema.Schema.Type<typeof impl.parameters>, ctx: Tool.Context) =>

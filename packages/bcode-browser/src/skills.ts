@@ -1,9 +1,8 @@
 // Skills directory resolver.
 //
 // Materializes the skills tree to `<dataDir>/skills/` and substitutes the
-// `{{SKILLS_DIR}}` placeholder in every file with that absolute path so
-// cross-references inside browser-execute-guide.md (``read `{{SKILLS_DIR}}/cloud-browser.md` ``)
-// point at a real location.
+// `{{SKILLS_DIR}}` placeholder in every file with that absolute path so any
+// cross-references inside the skill files point at a real location.
 //
 // Compiled launches (the user-facing path) read a one-line sentinel at
 // `<target>/.bcode-build` recording `<buildHash>:<target>`. When it matches
