@@ -71,6 +71,7 @@ export async function handler(
     modelList: "lite" | "full"
     parseApiKey: (headers: Headers) => string | undefined
     parseModel: (url: string, body: any) => string
+    parseVariant: (url: string, body: any) => string | undefined
     parseIsStream: (url: string, body: any) => boolean
   },
 ) {
@@ -93,6 +94,7 @@ export async function handler(
     const url = input.request.url
     const body = await input.request.json()
     const model = opts.parseModel(url, body)
+    const variant = opts.parseVariant(url, body)
     const isStream = opts.parseIsStream(url, body)
     const rawIp = input.request.headers.get("x-real-ip") ?? ""
     const ip = rawIp.includes(":") ? rawIp.split(":").slice(0, 4).join(":") : rawIp
@@ -109,6 +111,7 @@ export async function handler(
       request: requestId,
       client: ocClient,
       user_agent: userAgent,
+      "model.variant": variant,
     })
     const zenData = ZenData.list(opts.modelList)
     const modelInfo = validateModel(zenData, model)
@@ -162,6 +165,7 @@ export async function handler(
                   if (typeof v === "string") {
                     if (v === "$ip") return [[k, ip]]
                     if (v === "$workspace") return authInfo?.workspaceID ? [[k, authInfo?.workspaceID]] : []
+                    if (v === "$session") return sessionId ? [[k, sessionId]] : []
                     if (v.startsWith("$header.")) {
                       const headerValue = input.request.headers.get(v.slice(8))
                       return headerValue ? [[k, headerValue]] : []
@@ -411,8 +415,11 @@ export async function handler(
             message: error.message,
           },
           metadata:
-            error instanceof GoUsageLimitError || error instanceof BlackUsageLimitError
-              ? { workspace: error.workspace }
+            error instanceof GoUsageLimitError
+              ? {
+                  workspace: error.workspace,
+                  limitName: error.limitName,
+                }
               : {},
         }),
         { status: 429, headers },
@@ -706,7 +713,6 @@ export async function handler(
               t("zen.api.error.subscriptionQuotaExceeded", {
                 retryIn: formatRetryTime(result.resetInSec),
               }),
-              authInfo.workspaceID,
               result.resetInSec,
             )
         }
@@ -725,7 +731,6 @@ export async function handler(
               t("zen.api.error.subscriptionQuotaExceeded", {
                 retryIn: formatRetryTime(result.resetInSec),
               }),
-              authInfo.workspaceID,
               result.resetInSec,
             )
         }
@@ -739,6 +744,7 @@ export async function handler(
     // Validate lite subscription billing
     if (opts.modelList === "lite" && authInfo.billing.lite && authInfo.lite) {
       try {
+        const consoleGoUrl = `https://opencode.ai/workspace/${authInfo.workspaceID}/go`
         const sub = authInfo.lite
         const liteData = LiteData.getLimits()
 
@@ -751,8 +757,12 @@ export async function handler(
           })
           if (result.status === "rate-limited")
             throw new GoUsageLimitError(
-              t("zen.api.error.subscriptionQuotaExceededUseFreeModels"),
+              t("zen.api.error.goSubscriptionWeeklyLimitExceeded", {
+                retryIn: formatRetryTime(result.resetInSec),
+                consoleGoUrl,
+              }),
               authInfo.workspaceID,
+              "weekly",
               result.resetInSec,
             )
         }
@@ -767,8 +777,12 @@ export async function handler(
           })
           if (result.status === "rate-limited")
             throw new GoUsageLimitError(
-              t("zen.api.error.subscriptionQuotaExceededUseFreeModels"),
+              t("zen.api.error.goSubscriptionMonthlyLimitExceeded", {
+                retryIn: formatRetryTime(result.resetInSec),
+                consoleGoUrl,
+              }),
               authInfo.workspaceID,
+              "monthly",
               result.resetInSec,
             )
         }
@@ -783,8 +797,12 @@ export async function handler(
           })
           if (result.status === "rate-limited")
             throw new GoUsageLimitError(
-              t("zen.api.error.subscriptionQuotaExceededUseFreeModels"),
+              t("zen.api.error.goSubscriptionRollingLimitExceeded", {
+                retryIn: formatRetryTime(result.resetInSec),
+                consoleGoUrl,
+              }),
               authInfo.workspaceID,
+              "5 hour",
               result.resetInSec,
             )
         }
@@ -871,10 +889,6 @@ export async function handler(
 
     const inputCost = modelCost.input * inputTokens * 100
     const outputCost = modelCost.output * outputTokens * 100
-    const reasoningCost = (() => {
-      if (!reasoningTokens) return undefined
-      return modelCost.output * reasoningTokens * 100
-    })()
     const cacheReadCost = (() => {
       if (!cacheReadTokens) return undefined
       if (!modelCost.cacheRead) return undefined
@@ -891,17 +905,11 @@ export async function handler(
       return modelCost.cacheWrite1h * cacheWrite1hTokens * 100
     })()
     const totalCostInCent =
-      inputCost +
-      outputCost +
-      (reasoningCost ?? 0) +
-      (cacheReadCost ?? 0) +
-      (cacheWrite5mCost ?? 0) +
-      (cacheWrite1hCost ?? 0)
+      inputCost + outputCost + (cacheReadCost ?? 0) + (cacheWrite5mCost ?? 0) + (cacheWrite1hCost ?? 0)
     return {
       totalCostInCent,
       inputCost,
       outputCost,
-      reasoningCost,
       cacheReadCost,
       cacheWrite5mCost,
       cacheWrite1hCost,
@@ -923,8 +931,7 @@ export async function handler(
   ) {
     const { inputTokens, outputTokens, reasoningTokens, cacheReadTokens, cacheWrite5mTokens, cacheWrite1hTokens } =
       usageInfo
-    const { totalCostInCent, inputCost, outputCost, reasoningCost, cacheReadCost, cacheWrite5mCost, cacheWrite1hCost } =
-      costInfo
+    const { totalCostInCent, inputCost, outputCost, cacheReadCost, cacheWrite5mCost, cacheWrite1hCost } = costInfo
 
     logger.metric({
       "tokens.input": inputTokens,
@@ -935,14 +942,12 @@ export async function handler(
       "tokens.cache_write_1h": cacheWrite1hTokens,
       "cost.input.microcents": centsToMicroCents(inputCost),
       "cost.output.microcents": centsToMicroCents(outputCost),
-      "cost.reasoning.microcents": reasoningCost ? centsToMicroCents(reasoningCost) : undefined,
       "cost.cache_read.microcents": cacheReadCost ? centsToMicroCents(cacheReadCost) : undefined,
       "cost.cache_write.microcents": cacheWrite5mCost ? centsToMicroCents(cacheWrite5mCost) : undefined,
       "cost.total.microcents": centsToMicroCents(totalCostInCent),
       // deprecated - remove after May 20, 2026
       "cost.input": Math.round(inputCost),
       "cost.output": Math.round(outputCost),
-      "cost.reasoning": reasoningCost ? Math.round(reasoningCost) : undefined,
       "cost.cache_read": cacheReadCost ? Math.round(cacheReadCost) : undefined,
       "cost.cache_write_5m": cacheWrite5mCost ? Math.round(cacheWrite5mCost) : undefined,
       "cost.cache_write_1h": cacheWrite1hCost ? Math.round(cacheWrite1hCost) : undefined,
