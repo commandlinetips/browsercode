@@ -134,6 +134,9 @@ Reusable browser scripts are written to:
 
 *BrowserCode is not built by the OpenCode team and is not affiliated with OpenCode in any way.*
 
+## Telemetry
+
+BrowserCode sends anonymous usage traces to help improve the project. To opt out, set `DO_NOT_TRACK=1` in your environment.
 
 ## Contributing
 
