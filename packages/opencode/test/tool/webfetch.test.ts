@@ -15,7 +15,7 @@ const projectRoot = path.join(import.meta.dir, "../..")
 
 const ctx = {
   sessionID: SessionID.make("ses_test"),
-  messageID: MessageID.make("message"),
+  messageID: MessageID.make("msg_message"),
   callID: "",
   agent: "build",
   abort: AbortSignal.any([]),
