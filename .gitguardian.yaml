@@ -11,4 +11,4 @@
 # (`browsercode-core`, `bcode-browser`, `bcode-laminar`).
 version: 2
 paths-ignore:
-  - "packages/http-recorder/test/**"
+  - "packages/http-recorder/test/record-replay.test.ts"
