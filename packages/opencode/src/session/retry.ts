@@ -11,6 +11,12 @@ export type Err = ReturnType<NamedError["toObject"]>
 // literal equality; leaving these as neutral values keeps the upsell UI dark.
 export const GO_UPSELL_MESSAGE = "Free usage exceeded"
 export const GO_UPSELL_URL = ""
+// Body shown if the TUI ever rendered the action card. Never visible in
+// practice because GO_UPSELL_URL is empty -> DialogRetryAction skips the
+// GO-treatment branch. Kept as an exported const so tests and downstream
+// consumers reference one symbol and don't drift on future BrowserCode-side
+// neutralization edits.
+export const FREE_TIER_ACTION_MESSAGE = "Free usage limit reached on this provider."
 export type RetryReason = "free_tier_limit" | "account_rate_limit" | (string & {})
 
 export type Retryable = {
@@ -82,9 +88,7 @@ export function retryable(error: Err, provider: string) {
           reason: "free_tier_limit",
           provider,
           title: "Free limit reached",
-          // Sentinel message; never surfaces because GO_UPSELL_URL is empty so the
-          // TUI retry-action dialog skips the OpenCode-Go upsell treatment.
-          message: "Free usage limit reached on this provider.",
+          message: FREE_TIER_ACTION_MESSAGE,
           label: "subscribe",
           link: GO_UPSELL_URL,
         },

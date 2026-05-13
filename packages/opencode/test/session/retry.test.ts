@@ -254,7 +254,7 @@ describe("session.retry.retryable", () => {
         reason: "free_tier_limit",
         provider: "opencode",
         title: "Free limit reached",
-        message: "Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.",
+        message: SessionRetry.FREE_TIER_ACTION_MESSAGE,
         label: "subscribe",
         link: SessionRetry.GO_UPSELL_URL,
       },
