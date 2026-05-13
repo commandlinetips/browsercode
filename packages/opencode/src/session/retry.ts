@@ -82,7 +82,9 @@ export function retryable(error: Err, provider: string) {
           reason: "free_tier_limit",
           provider,
           title: "Free limit reached",
-          message: "Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.",
+          // Sentinel message; never surfaces because GO_UPSELL_URL is empty so the
+          // TUI retry-action dialog skips the OpenCode-Go upsell treatment.
+          message: "Free usage limit reached on this provider.",
           label: "subscribe",
           link: GO_UPSELL_URL,
         },
