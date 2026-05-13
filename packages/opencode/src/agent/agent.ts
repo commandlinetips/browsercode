@@ -348,7 +348,7 @@ export const layer = Layer.effect(
             `Repository: ${reference.repository}`,
             ...(reference.branch ? [`Branch/ref: ${reference.branch}`] : []),
             `Cached directory: ${reference.path}`,
-            `OpenCode materializes this configured repository before use. Do not call repo_clone for this reference.`,
+            `BrowserCode materializes this configured repository before use. Do not call repo_clone for this reference.`,
             `Inspect the cached directory as the primary reference source. Prefer repo_overview with path ${JSON.stringify(reference.path)} before broader searches, then use Glob, Grep, and Read inside that directory. Do not edit files.`,
             `Return exact absolute file paths for findings whenever possible.`,
           ].join("\n\n")

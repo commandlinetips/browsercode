@@ -518,9 +518,9 @@ export class Agent implements ACPAgent {
     if (params.clientCapabilities?._meta?.["terminal-auth"] === true) {
       authMethod._meta = {
         "terminal-auth": {
-          command: "opencode",
+          command: "bcode",
           args: ["auth", "login"],
-          label: "OpenCode Login",
+          label: "BrowserCode Login",
         },
       }
     }
@@ -546,7 +546,7 @@ export class Agent implements ACPAgent {
       },
       authMethods: [authMethod],
       agentInfo: {
-        name: "OpenCode",
+        name: "BrowserCode",
         version: InstallationVersion,
       },
     }

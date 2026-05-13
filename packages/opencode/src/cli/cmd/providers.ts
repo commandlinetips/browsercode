@@ -298,7 +298,7 @@ export const ProvidersLoginCommand = effectCmd({
   builder: (yargs) =>
     yargs
       .positional("url", {
-        describe: "opencode auth provider",
+        describe: "well-known auth provider URL",
         type: "string",
       })
       .option("provider", {
@@ -362,14 +362,16 @@ export const ProvidersLoginCommand = effectCmd({
     }
     const hooks = yield* pluginSvc.list()
 
+    // No bcode-branded provider yet; sort major providers ahead of long tail without
+    // putting OpenCode's own "opencode" / "opencode-go" at the top — we're not earning
+    // them upsells from our binary.
     const priority: Record<string, number> = {
-      opencode: 0,
+      anthropic: 0,
       openai: 1,
-      "github-copilot": 2,
-      google: 3,
-      anthropic: 4,
-      openrouter: 5,
-      vercel: 6,
+      google: 2,
+      "github-copilot": 3,
+      openrouter: 4,
+      vercel: 5,
     }
     const pluginProviders = resolvePluginProviders({
       hooks,
@@ -390,7 +392,6 @@ export const ProvidersLoginCommand = effectCmd({
           label: x.name,
           value: x.id,
           hint: {
-            opencode: "recommended",
             openai: "ChatGPT Plus/Pro or API key",
           }[x.id],
         })),
@@ -443,7 +444,7 @@ export const ProvidersLoginCommand = effectCmd({
       }
 
       yield* Prompt.log.warn(
-        `This only stores a credential for ${provider} - you will need configure it in opencode.json, check the docs for examples.`,
+        `This only stores a credential for ${provider} - you will need configure it in bcode.json, check the docs for examples.`,
       )
     }
 
@@ -452,7 +453,7 @@ export const ProvidersLoginCommand = effectCmd({
         "Amazon Bedrock authentication priority:\n" +
           "  1. Bearer token (AWS_BEARER_TOKEN_BEDROCK or /connect)\n" +
           "  2. AWS credential chain (profile, access keys, IAM roles, EKS IRSA)\n\n" +
-          "Configure via opencode.json options (profile, region, endpoint) or\n" +
+          "Configure via bcode.json options (profile, region, endpoint) or\n" +
           "AWS environment variables (AWS_PROFILE, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_WEB_IDENTITY_TOKEN_FILE).",
       )
     }
