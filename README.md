@@ -52,7 +52,7 @@ bcode
 Run an agent headlessly:
 
 ```sh
-bcode run "Connect to my browser and find the cheapest way to SF via any bus/train/rideshare"
+bcode run "On Google flights return all flight details from New York to SF today"
 ```
 
 ### Connect an LLM
