@@ -20,6 +20,7 @@
     "@opentelemetry/sdk-trace-base": "2.6.1",
     "@opentelemetry/core": "2.6.1",
     "@opentelemetry/exporter-trace-otlp-grpc": "0.214.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "0.214.0",
     "@grpc/grpc-js": "1.14.3"
   },
   "devDependencies": {

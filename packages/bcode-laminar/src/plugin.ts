@@ -14,6 +14,7 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { NodeSDK } from "@opentelemetry/sdk-node"
 
+import { createSpanExporter } from "./exporter"
 import { OpenCodeLaminarSpanProcessor } from "./processor"
 import { startTurnSpan } from "./span"
 import { sessionCurrentTurnSpan, subagentSessionIds } from "./state"
@@ -29,6 +30,13 @@ const parsePort = (raw: string | undefined, fallback: number): number => {
 
 export const LaminarPlugin: Plugin = ({ client }) => {
   const projectApiKey = process.env.LMNR_PROJECT_API_KEY
+  // OTel-standard endpoint env vars opt into OTLP/HTTP+protobuf — used by
+  // OSS users routing to non-Laminar collectors (Honeycomb, Tempo, Jaeger),
+  // and by the V4 cloud worker which relays through a backend that holds
+  // the real Laminar key. Either env var alone (without LMNR_PROJECT_API_KEY)
+  // is sufficient to enable tracing.
+  const otlpEndpoint =
+    process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? process.env.OTEL_EXPORTER_OTLP_ENDPOINT
   const baseUrl = process.env.LMNR_BASE_URL ?? "https://api.lmnr.ai"
   const port = parsePort(
     process.env.LMNR_GRPC_PORT,
@@ -48,18 +56,16 @@ export const LaminarPlugin: Plugin = ({ client }) => {
       .catch(() => {})
   }
 
-  if (!projectApiKey) return Promise.resolve({})
+  if (!projectApiKey && !otlpEndpoint) return Promise.resolve({})
 
   const processor = new OpenCodeLaminarSpanProcessor({
-    apiKey: projectApiKey,
-    baseUrl,
-    port,
+    exporter: createSpanExporter({ apiKey: projectApiKey ?? "", baseUrl, port }),
     log,
   })
 
   const sdk = new NodeSDK({ spanProcessors: [processor] })
   sdk.start()
-  log("info", `Laminar tracing initialized → ${baseUrl}`)
+  log("info", `Laminar tracing initialized → ${otlpEndpoint ?? baseUrl}`)
 
   return Promise.resolve({
     config: async (config) => {

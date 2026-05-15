@@ -21,6 +21,7 @@ import { type Context, type Span, trace } from "@opentelemetry/api"
 import {
   BatchSpanProcessor,
   type ReadableSpan,
+  type SpanExporter,
   type SpanProcessor,
 } from "@opentelemetry/sdk-trace-base"
 
@@ -33,7 +34,6 @@ import {
   SPAN_SDK_VERSION,
 } from "./attributes"
 import { getParentSpanId, makeSpanOtelV2Compatible, type OTelSpanCompat } from "./compat"
-import { LaminarSpanExporter } from "./exporter"
 import { sessionCurrentTurnSpan } from "./state"
 import { otelSpanIdToUUID, type StringUUID } from "./utils"
 
@@ -48,20 +48,11 @@ export class OpenCodeLaminarSpanProcessor implements SpanProcessor {
   private readonly spawningSpanIdToToolUseId: Record<string, string> = {}
   private readonly log: LogFn
 
-  constructor(options: {
-    apiKey: string
-    baseUrl: string
-    port: number
-    log?: LogFn
-  }) {
-    this.inner = new BatchSpanProcessor(
-      new LaminarSpanExporter({
-        apiKey: options.apiKey,
-        baseUrl: options.baseUrl,
-        port: options.port,
-      }),
-      { maxExportBatchSize: 512, exportTimeoutMillis: 30000 },
-    )
+  constructor(options: { exporter: SpanExporter; log?: LogFn }) {
+    this.inner = new BatchSpanProcessor(options.exporter, {
+      maxExportBatchSize: 512,
+      exportTimeoutMillis: 30000,
+    })
     this.log = options.log ?? (() => {})
   }
 
