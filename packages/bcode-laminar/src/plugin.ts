@@ -35,8 +35,10 @@ export const LaminarPlugin: Plugin = ({ client }) => {
   // and by the V4 cloud worker which relays through a backend that holds
   // the real Laminar key. Either env var alone (without LMNR_PROJECT_API_KEY)
   // is sufficient to enable tracing.
+  // `||` (not `??`) so an empty-string signal-specific override falls back
+  // to the generic endpoint, matching OTel SDK convention (empty == unset).
   const otlpEndpoint =
-    process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+    process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || process.env.OTEL_EXPORTER_OTLP_ENDPOINT
   const baseUrl = process.env.LMNR_BASE_URL ?? "https://api.lmnr.ai"
   const port = parsePort(
     process.env.LMNR_GRPC_PORT,
