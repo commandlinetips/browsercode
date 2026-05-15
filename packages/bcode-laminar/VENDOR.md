@@ -29,12 +29,17 @@ worth chasing.
 ## Behavior trims (vs upstream)
 
 - **No `LaminarClient` "rollout sessions"** — `LMNR_ROLLOUT_SESSION_ID` branch removed. We don't use that feature.
-- **No HTTP/protobuf exporter fallback** — gRPC only. Drops `@opentelemetry/exporter-trace-otlp-proto`.
-- **No `parseOtelHeaders` / `OTEL_HEADERS` resolution** — we always have a Laminar API key when emitting; OTel-env paths are dead.
 - **No `pino` logger** — log via `client.app.log` (opencode-managed).
 - **No `loadEnv()`** — opencode loads `.env` already; second pass would surprise users.
 - **No caller-side context injection (`sessionExternalContexts`)** — bcode runs the agent locally, not driven by an external TS host.
 - **`Laminar.startSpan` reduced** — only the path needed for the per-turn span (sessionId + optional parentSpanContext); no `tracingLevel`, masked-input, or process-global activation stack.
+
+## Behavior additions (vs upstream)
+
+- **OTLP/HTTP+protobuf transport selectable via standard OTel env vars.** When `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT` is set, `createSpanExporter` (in `exporter.ts`) returns the standard `@opentelemetry/exporter-trace-otlp-proto` exporter instead of the Laminar gRPC one. Headers come from `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_EXPORTER_OTLP_TRACES_HEADERS` (read by the proto exporter itself). Enables two flows:
+  - OSS users routing bcode telemetry to any OTel collector (Honeycomb, Tempo, Jaeger) without a Laminar account.
+  - V4 cloud relaying spans through a backend that holds the real Laminar ingest key — the agent runtime never needs `LMNR_PROJECT_API_KEY`.
+  - Default (neither OTel env var set) is unchanged: gRPC to Laminar.
 
 ## Behavior preserved
 
