@@ -2,6 +2,8 @@ import { Config } from "@/config/config"
 import type { MessageV2 } from "@/session/message-v2"
 import * as Log from "@opencode-ai/core/util/log"
 import { Context, Effect, Layer, Schema } from "effect"
+import { createRequire } from "module"
+import { dirname } from "path"
 
 const MAX_BASE64_BYTES = 4.5 * 1024 * 1024
 const MAX_WIDTH = 2000
@@ -47,6 +49,7 @@ export class SizeError extends Schema.TaggedErrorClass<SizeError>()("ImageSizeEr
 }
 
 export type Error = PhotonUnavailableError | InvalidDataUrlError | DecodeError | SizeError
+type Photon = typeof import("@silvia-odwyer/photon-node")
 
 export interface Interface {
   readonly normalize: (input: MessageV2.FilePart) => Effect.Effect<MessageV2.FilePart, Error>
@@ -66,8 +69,29 @@ export const layer = Layer.effect(
           // Patched photon-node reads this during module init so Bun compiled binaries use the embedded wasm path.
           ;(globalThis as typeof globalThis & { __OPENCODE_PHOTON_WASM_PATH?: string }).__OPENCODE_PHOTON_WASM_PATH =
             photonWasm
+          // In Bun compiled binaries, `with: { type: "file" }` returns the embedded asset path as a string.
+          // In dev/test it returns the module record. Use the path form when available so the patched
+          // photon_rs.js (which reads `__OPENCODE_PHOTON_WASM_PATH` during module init) is evaluated against
+          // the embedded asset rather than failing to resolve `photon_rs_bg.wasm` from a bunfs __dirname.
+          const photonJsAsset = (await import("@silvia-odwyer/photon-node/photon_rs.js", { with: { type: "file" } }))
+            .default as unknown
+          if (typeof photonJsAsset === "string") {
+            const photonModule = { exports: {} as Photon }
+            new Function("exports", "require", "module", "__filename", "__dirname", await Bun.file(photonJsAsset).text())(
+              photonModule.exports,
+              createRequire(import.meta.url),
+              photonModule,
+              photonJsAsset,
+              dirname(photonJsAsset),
+            )
+            return photonModule.exports
+          }
           return await import("@silvia-odwyer/photon-node")
-        } catch {
+        } catch (error) {
+          log.warn("photon image processor unavailable", {
+            error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          })
           return null
         }
       }),

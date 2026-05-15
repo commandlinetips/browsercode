@@ -1,4 +1,4 @@
-import { Cause, Deferred, Effect, Exit, Layer, Context, Scope } from "effect"
+import { Cause, Deferred, Effect, Exit, Layer, Context, Option, Scope } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { Bus } from "@/bus"
@@ -29,6 +29,29 @@ import { Flag } from "@opencode-ai/core/flag/flag"
 
 const DOOM_LOOP_THRESHOLD = 3
 const log = Log.create({ service: "session.processor" })
+
+function omittedImagesMessage(failures: ReadonlyArray<Image.Error | undefined>) {
+  const groups = failures.reduce<Map<string, number>>((acc, error) => {
+    const reason = (() => {
+      switch (error?._tag) {
+        case "ImagePhotonUnavailableError":
+          return "image processor unavailable in this runtime"
+        case "ImageInvalidDataUrlError":
+          return "attachment URL malformed"
+        case "ImageDecodeError":
+          return "could not decode image data"
+        case "ImageSizeError":
+          return "could not be resized below the inline image size limit"
+        default:
+          return "unknown error"
+      }
+    })()
+    return acc.set(reason, (acc.get(reason) ?? 0) + 1)
+  }, new Map())
+  return Array.from(groups.entries())
+    .map(([reason, count]) => `[${count} image${count === 1 ? "" : "s"} omitted: ${reason}.]`)
+    .join("\n")
+}
 
 export type Result = "compact" | "stop" | "continue"
 
@@ -407,14 +430,13 @@ export const layer: Layer.Layer<
                 ? image.normalize(attachment).pipe(Effect.exit)
                 : Effect.succeed(Exit.succeed<MessageV2.FilePart>(attachment)),
             )
-            const omitted = normalized.filter(Exit.isFailure).length
+            const failures = normalized
+              .filter(Exit.isFailure)
+              .map((exit) => Option.getOrUndefined(Cause.findErrorOption(exit.cause)))
             const attachments = normalized.filter(Exit.isSuccess).map((item) => item.value)
             const output = {
               ...value.output,
-              output:
-                omitted === 0
-                  ? value.output.output
-                  : `${value.output.output}\n\n[${omitted} image${omitted === 1 ? "" : "s"} omitted: could not be resized below the inline image size limit.]`,
+              output: failures.length === 0 ? value.output.output : `${value.output.output}\n\n${omittedImagesMessage(failures)}`,
               attachments: attachments?.length ? attachments : undefined,
             }
             // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
