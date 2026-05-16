@@ -19,6 +19,7 @@ import type { ToolPart } from "@opencode-ai/sdk/v2"
 import type * as Tool from "@/tool/tool"
 import type { ApplyPatchTool } from "@/tool/apply_patch"
 import type { ShellTool as BashTool } from "@/tool/shell"
+import type { BrowserExecuteTool } from "@/tool/browser-execute"
 import type { EditTool } from "@/tool/edit"
 import type { GlobTool } from "@/tool/glob"
 import type { GrepTool } from "@/tool/grep"
@@ -94,6 +95,7 @@ type ToolPermissionCtx = {
 type ToolDefs = {
   invalid: typeof InvalidTool
   bash: typeof BashTool
+  browser_execute: typeof BrowserExecuteTool
   write: typeof WriteTool
   edit: typeof EditTool
   apply_patch: typeof ApplyPatchTool
@@ -682,6 +684,40 @@ function scrollBashFinal(p: ToolProps<typeof BashTool>): string {
   return `bash completed (exit ${code})${time ? ` · ${time}` : ""}`
 }
 
+// Mimic a JS REPL: "> " on the first line, "  " on continuations. Skip
+// leading/trailing blank lines so a snippet that starts with "\n" doesn't
+// render an empty "> " row. Matches the TUI BrowserExecute renderer.
+function promptedCode(code: string): string {
+  const src = code.replace(/^\n+|\n+$/g, "")
+  if (!src) {
+    return ""
+  }
+
+  return src
+    .split("\n")
+    .map((line, i) => (i === 0 ? "> " : "  ") + line)
+    .join("\n")
+}
+
+function scrollBrowserExecuteStart(p: ToolProps<typeof BrowserExecuteTool>): string {
+  const desc = p.input.description || "Browser execute"
+  const code = promptedCode(p.input.code ?? "")
+  if (!code) {
+    return `# ${desc}`
+  }
+
+  return `# ${desc}\n${code}`
+}
+
+function scrollBrowserExecuteProgress(p: ToolProps<typeof BrowserExecuteTool>): string {
+  return stripAnsi(p.frame.raw).replace(/^\n+/, "").replace(/\n+$/, "")
+}
+
+function scrollBrowserExecuteFinal(p: ToolProps<typeof BrowserExecuteTool>): string {
+  const time = span(p.frame.state)
+  return time ? `browser_execute completed · ${time}` : "browser_execute completed"
+}
+
 function scrollReadStart(p: ToolProps<typeof ReadTool>): string {
   const file = toolPath(p.input.filePath)
   const extra = info(p.frame.input, ["filePath"])
@@ -973,6 +1009,16 @@ function permBash(p: ToolPermissionProps<typeof BashTool>): ToolPermissionInfo {
   }
 }
 
+function permBrowserExecute(p: ToolPermissionProps<typeof BrowserExecuteTool>): ToolPermissionInfo {
+  const title = p.input.description || "Browser execute"
+  const code = promptedCode(p.input.code ?? "")
+  return {
+    icon: "#",
+    title,
+    lines: code ? code.split("\n") : p.patterns.map((item) => `- ${item}`),
+  }
+}
+
 function permTask(p: ToolPermissionProps<typeof TaskTool>): ToolPermissionInfo {
   const type = p.input.subagent_type || "general"
   const desc = p.input.description
@@ -1041,6 +1087,19 @@ const TOOL_RULES = {
       final: scrollBashFinal,
     },
     permission: permBash,
+  },
+  browser_execute: {
+    view: {
+      output: true,
+      final: false,
+    },
+    run: runBrowserExecute,
+    scroll: {
+      start: scrollBrowserExecuteStart,
+      progress: scrollBrowserExecuteProgress,
+      final: scrollBrowserExecuteFinal,
+    },
+    permission: permBrowserExecute,
   },
   write: {
     view: {
@@ -1272,6 +1331,15 @@ function runBash(p: ToolProps<typeof BashTool>): ToolInline {
   return {
     icon: "$",
     title: p.input.command || "",
+    mode: "block",
+    body: p.frame.status === "completed" ? text(p.frame.state.output).trim() : undefined,
+  }
+}
+
+function runBrowserExecute(p: ToolProps<typeof BrowserExecuteTool>): ToolInline {
+  return {
+    icon: ">",
+    title: p.input.description || "Browser execute",
     mode: "block",
     body: p.frame.status === "completed" ? text(p.frame.state.output).trim() : undefined,
   }
