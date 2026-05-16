@@ -3,7 +3,7 @@
 // at runtime from a `browser_execute` snippet via
 // `await import("/abs/path?t=" + Date.now())`. We don't run a real
 // `browser_execute` here — the point is to verify the dynamic-import
-// mechanism behaves as the browser-execute-guide.md prompt claims.
+// mechanism behaves as the browser-execute skill prompt claims.
 //
 // All four scenarios run against a real tmp dir, real .ts files, and
 // the real Bun module loader. No mocks.

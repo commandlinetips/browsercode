@@ -56,7 +56,7 @@ const MAX_TIMEOUT_MS = 10 * 60 * 1000
 export const parameters = Schema.Struct({
   code: Schema.String.annotate({
     description:
-      "The JavaScript snippet to execute. `session` (CDP Session) and `console` are in scope; see browser-execute-guide.md for the snippet model.",
+      "The JavaScript snippet to execute. `session` (CDP Session) and `console` are in scope; see the `browser-execute` skill for the snippet model.",
   }),
   timeout: Schema.optional(Schema.Number).annotate({
     description: `Optional timeout in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS})`,
@@ -145,7 +145,7 @@ const serialize = (v: unknown): string => {
 
 // Snippet executor. The CDP Session is resolved per-call from `SessionStore`
 // keyed on `ctx.sessionID`. The agent connects with `await session.connect(...)`
-// in one snippet (Way 1 / Way 2 / Way 3 in browser-execute-guide.md); the Session persists
+// in one snippet (Way 1 / Way 2 / Way 3 in skills/browser-execute/SKILL.md); the Session persists
 // for follow-up snippets in the same opencode session.
 //
 // `dataDir` is opencode's XDG_DATA_HOME for bcode (~/.local/share/bcode/ on

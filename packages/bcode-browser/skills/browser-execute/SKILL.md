@@ -1,3 +1,8 @@
+---
+name: browser-execute
+description: Use ONLY when calling the `browser_execute` tool or driving a real browser via the Chrome DevTools Protocol. Required reading before the first `browser_execute` call in a session. Covers the three connection methods (local Chrome with remote debugging, isolated debug-port profile, Browser Use cloud), the in-process `session` / `console` snippet model, attaching to a page target, common CDP commands, the per-project `.bcode/agent-workspace/` for reusable scripts, and screenshot auto-attachment.
+---
+
 The `browser_execute` tool evaluates JavaScript against a connected browser `session` via the Chrome DevTools Protocol.
 The snippet runs in-process; `session` is bound to a long-lived CDP `Session` that persists. Connect once, then drive many snippets.
 There is no helper namespace, just `session`, `console`, and standard JS globals. 

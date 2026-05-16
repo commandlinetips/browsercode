@@ -14,6 +14,7 @@ import { ConfigMarkdown } from "@/config/markdown"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Glob } from "@opencode-ai/core/util/glob"
 import * as Log from "@opencode-ai/core/util/log"
+import { Skills as BcodeSkills } from "@browser-use/bcode-browser/skills"
 import { Discovery } from "./discovery"
 import CUSTOMIZE_OPENCODE_SKILL_BODY from "./prompt/customize-opencode.md" with { type: "text" }
 import { isRecord } from "@/util/record"
@@ -216,6 +217,16 @@ const discoverSkills = Effect.fnUntraced(function* (
     }
   }
 
+  // BrowserCode-shipped skills (browser-execute and any future first-party
+  // reference docs) live at <dataDir>/skills/<name>/SKILL.md after the
+  // bcode-browser materialization step. Scan unconditionally — the dir may
+  // not exist yet on the very first launch before BrowserExecute.make has
+  // run, and that's fine (Glob returns empty).
+  const bcodeSkillsDir = BcodeSkills.skillsDir(global.data)
+  if (yield* fsys.isDir(bcodeSkillsDir)) {
+    yield* scan(state, bcodeSkillsDir, SKILL_PATTERN, { scope: "bcode" })
+  }
+
   return {
     matches: Array.from(state.matches),
     dirs: Array.from(state.dirs),
@@ -258,13 +269,26 @@ export const layer = Layer.effect(
     const state = yield* InstanceState.make(
       Effect.fn("Skill.state")(function* () {
         const s: State = { skills: {}, dirs: new Set() }
-        // Register the built-in skill BEFORE disk discovery so a user-disk
-        // skill with the same name can override it.
-        s.skills[CUSTOMIZE_OPENCODE_SKILL_NAME] = {
-          name: CUSTOMIZE_OPENCODE_SKILL_NAME,
-          description: CUSTOMIZE_OPENCODE_SKILL_DESCRIPTION,
-          location: "<built-in>",
-          content: CUSTOMIZE_OPENCODE_SKILL_BODY,
+        // BrowserCode gate: the upstream `customize-opencode` built-in is
+        // off-by-default in BrowserCode. The skill describes opencode.json,
+        // opencode plugins, opencode agents — not useful for browser-driving
+        // sessions, and registering it unconditionally pollutes the system
+        // prompt with negative-signal content (eval data showed a measurable
+        // regression on browser-task scores when this skill was forced on).
+        // Set BCODE_ENABLE_CUSTOMIZE_OPENCODE=1 to opt back in for sessions
+        // where the user is actually editing bcode.json or agent configs.
+        // Skipped registration happens BEFORE disk discovery, so a user-disk
+        // skill named `customize-opencode` still loads normally.
+        const customizeEnabled =
+          process.env.BCODE_ENABLE_CUSTOMIZE_OPENCODE === "1" ||
+          process.env.BCODE_ENABLE_CUSTOMIZE_OPENCODE?.toLowerCase() === "true"
+        if (customizeEnabled) {
+          s.skills[CUSTOMIZE_OPENCODE_SKILL_NAME] = {
+            name: CUSTOMIZE_OPENCODE_SKILL_NAME,
+            description: CUSTOMIZE_OPENCODE_SKILL_DESCRIPTION,
+            location: "<built-in>",
+            content: CUSTOMIZE_OPENCODE_SKILL_BODY,
+          }
         }
         yield* loadSkills(s, yield* InstanceState.get(discovered), bus)
         return s
