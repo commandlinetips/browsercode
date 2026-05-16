@@ -1,16 +1,15 @@
 import { Effect, Layer, Schema, Context, Stream } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
-import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { withTransientReadRetry } from "@/util/effect-http-client"
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
+import { ChildProcess } from "effect/unstable/process"
+import { AppProcess } from "@opencode-ai/core/process"
 import path from "path"
-import z from "zod"
 import { BusEvent } from "@/bus/bus-event"
-import { Flag } from "@opencode-ai/core/flag/flag"
 import * as Log from "@opencode-ai/core/util/log"
 import { makeRuntime } from "@opencode-ai/core/effect/runtime"
 import semver from "semver"
 import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
+import { Flag } from "@opencode-ai/core/flag/flag"
 
 const log = Log.create({ service: "installation" })
 
@@ -44,17 +43,17 @@ export function getReleaseType(current: string, latest: string): ReleaseType {
   return "patch"
 }
 
-export const Info = z
-  .object({
-    version: z.string(),
-    latest: z.string(),
-  })
-  .meta({
-    ref: "InstallationInfo",
-  })
-export type Info = z.infer<typeof Info>
+export const Info = Schema.Struct({
+  version: Schema.String,
+  latest: Schema.String,
+}).annotate({ identifier: "InstallationInfo" })
+export type Info = Schema.Schema.Type<typeof Info>
 
-export const USER_AGENT = `browsercode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT}`
+export function userAgent(client = Flag.OPENCODE_CLIENT) {
+  return `browsercode/${InstallationChannel}/${InstallationVersion}/${client}`
+}
+
+export const USER_AGENT = userAgent()
 
 export function isPreview() {
   return InstallationChannel !== "latest"
@@ -84,109 +83,97 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Installation") {}
 
-export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | ChildProcessSpawner.ChildProcessSpawner> =
-  Layer.effect(
-    Service,
-    Effect.gen(function* () {
-      const http = yield* HttpClient.HttpClient
-      const httpOk = HttpClient.filterStatusOk(withTransientReadRetry(http))
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Service> = Layer.effect(
+  Service,
+  Effect.gen(function* () {
+    const http = yield* HttpClient.HttpClient
+    const httpOk = HttpClient.filterStatusOk(withTransientReadRetry(http))
+    const appProcess = yield* AppProcess.Service
 
-      const text = Effect.fnUntraced(
-        function* (cmd: string[], opts?: { cwd?: string; env?: Record<string, string> }) {
-          const proc = ChildProcess.make(cmd[0], cmd.slice(1), {
+    const text = Effect.fnUntraced(
+      function* (cmd: string[], opts?: { cwd?: string; env?: Record<string, string> }) {
+        const result = yield* appProcess.run(
+          ChildProcess.make(cmd[0], cmd.slice(1), {
             cwd: opts?.cwd,
             env: opts?.env,
             extendEnv: true,
-          })
-          const handle = yield* spawner.spawn(proc)
-          const out = yield* Stream.mkString(Stream.decodeText(handle.stdout))
-          yield* handle.exitCode
-          return out
-        },
-        Effect.scoped,
-        Effect.catch(() => Effect.succeed("")),
-      )
+          }),
+        )
+        return result.stdout.toString("utf8")
+      },
+      Effect.catch(() => Effect.succeed("")),
+    )
 
-      // Re-runs the hosted install script with VERSION=<target>, which writes
-      // the new binary to ~/.bcode/bin/bcode in place. Same flow as the
-      // user's original `curl https://bcode.sh/install | bash` install.
-      const upgradeCurl = Effect.fnUntraced(
-        function* (target: string) {
-          const response = yield* httpOk.execute(HttpClientRequest.get("https://bcode.sh/install"))
-          const body = yield* response.text
-          const proc = ChildProcess.make("bash", [], {
-            stdin: Stream.make(new TextEncoder().encode(body)),
-            env: { VERSION: target },
-            extendEnv: true,
-          })
-          const handle = yield* spawner.spawn(proc)
-          const [stdout, stderr] = yield* Effect.all(
-            [Stream.mkString(Stream.decodeText(handle.stdout)), Stream.mkString(Stream.decodeText(handle.stderr))],
-            { concurrency: 2 },
-          )
-          const code = yield* handle.exitCode
-          return { code, stdout, stderr }
-        },
-        Effect.scoped,
-        Effect.orDie,
+    const upgradeCurl = Effect.fnUntraced(function* (target: string) {
+      const response = yield* httpOk.execute(HttpClientRequest.get("https://bcode.sh/install"))
+      const body = yield* response.text
+      const bodyBytes = new TextEncoder().encode(body)
+      const result = yield* appProcess.run(
+        ChildProcess.make("bash", [], {
+          stdin: Stream.make(bodyBytes),
+          env: { VERSION: target },
+          extendEnv: true,
+        }),
       )
-
-      const result: Interface = {
-        info: Effect.fn("Installation.info")(function* () {
-          return {
-            version: InstallationVersion,
-            latest: yield* result.latest(),
-          }
-        }),
-        // Until BrowserCode ships beyond the curl installer, we only detect
-        // the curl path. Anything else is "unknown" — `upgrade()` handles
-        // that with a clear error pointing at the install script.
-        method: Effect.fn("Installation.method")(function* () {
-          if (process.execPath.includes(path.join(".bcode", "bin"))) return "curl" as Method
-          if (process.execPath.includes(path.join(".local", "bin"))) return "curl" as Method
-          return "unknown" as Method
-        }),
-        latest: Effect.fn("Installation.latest")(function* (installMethod?: Method) {
-          const detectedMethod = installMethod || (yield* result.method())
-          // No-op for unsupported methods so the TUI auto-upgrade check stays
-          // silent for devs running from source.
-          if (detectedMethod !== "curl") return InstallationVersion
-          const response = yield* httpOk.execute(
-            HttpClientRequest.get("https://api.github.com/repos/browser-use/browsercode/releases/latest").pipe(
-              HttpClientRequest.acceptJson,
-            ),
-          )
-          const data = yield* HttpClientResponse.schemaBodyJson(GitHubRelease)(response)
-          return data.tag_name.replace(/^v/, "")
-        }, Effect.orDie),
-        upgrade: Effect.fn("Installation.upgrade")(function* (m: Method, target: string) {
-          if (m !== "curl") {
-            return yield* new UpgradeFailedError({
-              stderr:
-                "Auto-upgrade currently supports only curl-installed bcode. " +
-                "Reinstall with:\n  curl -fsSL https://bcode.sh/install | bash",
-            })
-          }
-          const upgradeResult = yield* upgradeCurl(target)
-          if (upgradeResult.code !== 0) {
-            return yield* new UpgradeFailedError({
-              stderr: `${upgradeResult.stderr.trimEnd()}\n\nReinstall with:\n  curl -fsSL https://bcode.sh/install | bash`,
-            })
-          }
-          log.info("upgraded", { method: m, target, stdout: upgradeResult.stdout, stderr: upgradeResult.stderr })
-          yield* text([process.execPath, "--version"])
-        }),
+      return {
+        code: result.exitCode,
+        stdout: result.stdout.toString("utf8"),
+        stderr: result.stderr.toString("utf8"),
       }
+    }, Effect.orDie)
 
-      return Service.of(result)
-    }),
-  )
+    const result: Interface = {
+      info: Effect.fn("Installation.info")(function* () {
+        return {
+          version: InstallationVersion,
+          latest: yield* result.latest(),
+        }
+      }),
+      // Until BrowserCode ships beyond the curl installer, we only detect
+      // the curl path. Anything else is "unknown" — `upgrade()` handles
+      // that with a clear error pointing at the install script.
+      method: Effect.fn("Installation.method")(function* () {
+        if (process.execPath.includes(path.join(".bcode", "bin"))) return "curl" as Method
+        if (process.execPath.includes(path.join(".local", "bin"))) return "curl" as Method
+        return "unknown" as Method
+      }),
+      latest: Effect.fn("Installation.latest")(function* (installMethod?: Method) {
+        const detectedMethod = installMethod || (yield* result.method())
+        // No-op for unsupported methods so the TUI auto-upgrade check stays
+        // silent for devs running from source.
+        if (detectedMethod !== "curl") return InstallationVersion
+        const response = yield* httpOk.execute(
+          HttpClientRequest.get("https://api.github.com/repos/browser-use/browsercode/releases/latest").pipe(
+            HttpClientRequest.acceptJson,
+          ),
+        )
+        const data = yield* HttpClientResponse.schemaBodyJson(GitHubRelease)(response)
+        return data.tag_name.replace(/^v/, "")
+      }, Effect.orDie),
+      upgrade: Effect.fn("Installation.upgrade")(function* (m: Method, target: string) {
+        if (m !== "curl") {
+          return yield* new UpgradeFailedError({
+            stderr:
+              "Auto-upgrade currently supports only curl-installed bcode. " +
+              "Reinstall with:\n  curl -fsSL https://bcode.sh/install | bash",
+          })
+        }
+        const upgradeResult = yield* upgradeCurl(target)
+        if (upgradeResult.code !== 0) {
+          return yield* new UpgradeFailedError({
+            stderr: `${upgradeResult.stderr.trimEnd()}\n\nReinstall with:\n  curl -fsSL https://bcode.sh/install | bash`,
+          })
+        }
+        log.info("upgraded", { method: m, target, stdout: upgradeResult.stdout, stderr: upgradeResult.stderr })
+        yield* text([process.execPath, "--version"])
+      }),
+    }
 
-export const defaultLayer = layer.pipe(
-  Layer.provide(FetchHttpClient.layer),
-  Layer.provide(CrossSpawnSpawner.defaultLayer),
+    return Service.of(result)
+  }),
 )
+
+export const defaultLayer = layer.pipe(Layer.provide(FetchHttpClient.layer), Layer.provide(AppProcess.defaultLayer))
 
 const { runPromise } = makeRuntime(Service, defaultLayer)
 

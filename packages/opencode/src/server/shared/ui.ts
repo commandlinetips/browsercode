@@ -1,13 +1,9 @@
-import { Flag } from "@opencode-ai/core/flag/flag"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { Effect } from "effect"
 import { HttpClient, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { createHash } from "node:crypto"
 
-const embeddedUIPromise = Flag.OPENCODE_DISABLE_EMBEDDED_WEB_UI
-  ? Promise.resolve(null)
-  : // @ts-expect-error - generated file at build time
-    import("opencode-web-ui.gen.ts").then((module) => module.default as Record<string, string>).catch(() => null)
+let embeddedUIPromise: Promise<Record<string, string> | null> | undefined
 
 // BrowserCode does not proxy the web UI through app.opencode.ai. If the embedded
 // UI bundle is missing (e.g. OPENCODE_DISABLE_EMBEDDED_WEB_UI in dev), requests
@@ -26,9 +22,11 @@ export function cspForHtml(body: string) {
   return csp(match ? createHash("sha256").update(match[2]).digest("base64") : "")
 }
 
-export function embeddedUI() {
-  if (Flag.OPENCODE_DISABLE_EMBEDDED_WEB_UI) return Promise.resolve(null)
-  return embeddedUIPromise
+export function embeddedUI(disableEmbeddedWebUi: boolean) {
+  if (disableEmbeddedWebUi) return Promise.resolve(null)
+  return (embeddedUIPromise ??=
+    // @ts-expect-error - generated file at build time
+    import("opencode-web-ui.gen.ts").then((module) => module.default as Record<string, string>).catch(() => null))
 }
 
 function notFound() {
@@ -60,13 +58,13 @@ export function serveEmbeddedUIEffect(
 
 export function serveUIEffect(
   request: HttpServerRequest.HttpServerRequest,
-  services: { fs: AppFileSystem.Interface; client: HttpClient.HttpClient },
+  services: { fs: AppFileSystem.Interface; client: HttpClient.HttpClient; disableEmbeddedWebUi: boolean },
 ) {
   // `services.client` is kept in the signature so the upstream call-site
   // (router-level HttpClient inject) doesn't need to change on every sync.
   void services.client
   return Effect.gen(function* () {
-    const embeddedWebUI = yield* Effect.promise(() => embeddedUI())
+    const embeddedWebUI = yield* Effect.promise(() => embeddedUI(services.disableEmbeddedWebUi))
     const path = new URL(request.url, "http://localhost").pathname
 
     if (embeddedWebUI) return yield* serveEmbeddedUIEffect(path, services.fs, embeddedWebUI)
