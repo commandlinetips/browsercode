@@ -256,10 +256,18 @@ export const layer = Layer.effect(
               for (const hook of hooks) {
                 try {
                   const ret = hook["event"]?.({ event: input as any })
-                  if (awaitHook && ret) await ret
+                  if (awaitHook && ret) {
+                    await ret
+                  } else if (ret) {
+                    // Fire-and-forget path: surface async failures to logs instead of letting them
+                    // become unhandledRejections that hide which plugin/event broke.
+                    void Promise.resolve(ret).catch((err) =>
+                      log.error("plugin event hook failed", { error: err }),
+                    )
+                  }
                 } catch (err) {
-                  // Isolate plugin failures: a sync throw or async rejection from one plugin
-                  // must not kill the subscription fiber and silently disable every other plugin.
+                  // Catches sync throws + awaited async rejections so one bad plugin can't kill
+                  // the subscription fiber and silently disable every other plugin.
                   log.error("plugin event hook failed", { error: err })
                 }
               }
