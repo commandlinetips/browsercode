@@ -244,12 +244,32 @@ export const layer = Layer.effect(
           }).pipe(Effect.ignore)
         }
 
-        // Subscribe to bus events, fiber interrupted when scope closes
+        // Subscribe to bus events, fiber interrupted when scope closes.
+        // session.idle and server.instance.disposed are plugins' only chance to
+        // drain async work (e.g. OTel span exporters) before src/index.ts's
+        // top-level finally runs forceFlush and calls process.exit() — await
+        // those handlers; keep the rest fire-and-forget for throughput.
         yield* bus.subscribeAll().pipe(
           Stream.runForEach((input) =>
-            Effect.sync(() => {
+            Effect.promise(async () => {
+              const awaitHook = input.type === "server.instance.disposed" || input.type === "session.idle"
               for (const hook of hooks) {
-                void hook["event"]?.({ event: input as any })
+                try {
+                  const ret = hook["event"]?.({ event: input as any })
+                  if (awaitHook && ret) {
+                    await ret
+                  } else if (ret) {
+                    // Fire-and-forget path: surface async failures to logs instead of letting them
+                    // become unhandledRejections that hide which plugin/event broke.
+                    void Promise.resolve(ret).catch((err) =>
+                      log.error("plugin event hook failed", { error: err }),
+                    )
+                  }
+                } catch (err) {
+                  // Catches sync throws + awaited async rejections so one bad plugin can't kill
+                  // the subscription fiber and silently disable every other plugin.
+                  log.error("plugin event hook failed", { error: err })
+                }
               }
             }),
           ),
