@@ -3,5 +3,5 @@ Executes JavaScript in a browser via CDP.
 Usage:
 - Use this tool whenever the task requires driving a real browser.
 - Use this tool to read webpages that block the webfetch tool.
-- IMPORTANT: you MUST use the Read tool first to read `{{SKILLS_DIR}}/browser-execute-guide.md`. This tool will fail if you did not read these directions first.
+- IMPORTANT: you MUST use the skill tool first to load the `browser-execute` skill. This tool will fail if you did not read those directions first.
 - Returns console output from the snippet; screenshots taken attach automatically as images.

@@ -11,10 +11,10 @@
 //   src/browser-execute.ts — in-process JS-eval browser_execute body
 //   src/session-store.ts   — per-opencode-session CDP Session map
 //   src/skills.ts          — runtime resolver for embedded skills
-//   skills/                — browser-execute-guide.md (embedded into binary)
+//   skills/                — browser-execute/SKILL.md (embedded into binary)
 //
 // Cloud browser provisioning is intentionally NOT a separate Level-1
-// surface. The agent reads Way 3 of `skills/browser-execute-guide.md` and
+// surface. The agent reads Way 3 of `skills/browser-execute/SKILL.md` and
 // writes the fetch+connect snippet itself, matching how local-browser
 // connect works (snippet-side, not tool-side). Decisions trail in
 // `memory/browsercode/decisions.md` §3.4.
