@@ -16,7 +16,6 @@ import { Glob } from "@opencode-ai/core/util/glob"
 import * as Log from "@opencode-ai/core/util/log"
 import { Skills as BcodeSkills } from "@browser-use/bcode-browser/skills"
 import { Discovery } from "./discovery"
-import CUSTOMIZE_OPENCODE_SKILL_BODY from "./prompt/customize-opencode.md" with { type: "text" }
 import { isRecord } from "@/util/record"
 
 const log = Log.create({ service: "skill" })
@@ -25,15 +24,6 @@ const AGENTS_EXTERNAL_DIR = ".agents"
 const EXTERNAL_SKILL_PATTERN = "skills/**/SKILL.md"
 const OPENCODE_SKILL_PATTERN = "{skill,skills}/**/SKILL.md"
 const SKILL_PATTERN = "**/SKILL.md"
-
-// Built-in skill that ships with opencode. The model's intuition for what an
-// opencode.json should look like is often wrong, and opencode hard-fails on
-// invalid config, so users hit cryptic startup errors. Loading this skill
-// when the model is asked to touch opencode's own config files gives it the
-// actual schemas instead of guesses.
-const CUSTOMIZE_OPENCODE_SKILL_NAME = "customize-opencode"
-const CUSTOMIZE_OPENCODE_SKILL_DESCRIPTION =
-  "Use ONLY when the user is editing or creating opencode's own configuration: opencode.json, opencode.jsonc, files under .opencode/, or files under ~/.config/opencode/. Also use when creating or fixing opencode agents, subagents, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code, or for any project that is not configuring opencode itself."
 
 export const Info = Schema.Struct({
   name: Schema.String,
@@ -269,27 +259,12 @@ export const layer = Layer.effect(
     const state = yield* InstanceState.make(
       Effect.fn("Skill.state")(function* () {
         const s: State = { skills: {}, dirs: new Set() }
-        // BrowserCode gate: the upstream `customize-opencode` built-in is
-        // off-by-default in BrowserCode. The skill describes opencode.json,
-        // opencode plugins, opencode agents — not useful for browser-driving
-        // sessions, and registering it unconditionally pollutes the system
-        // prompt with negative-signal content (eval data showed a measurable
-        // regression on browser-task scores when this skill was forced on).
-        // Set BCODE_ENABLE_CUSTOMIZE_OPENCODE=1 to opt back in for sessions
-        // where the user is actually editing bcode.json or agent configs.
-        // Skipped registration happens BEFORE disk discovery, so a user-disk
-        // skill named `customize-opencode` still loads normally.
-        const customizeEnabled =
-          process.env.BCODE_ENABLE_CUSTOMIZE_OPENCODE === "1" ||
-          process.env.BCODE_ENABLE_CUSTOMIZE_OPENCODE?.toLowerCase() === "true"
-        if (customizeEnabled) {
-          s.skills[CUSTOMIZE_OPENCODE_SKILL_NAME] = {
-            name: CUSTOMIZE_OPENCODE_SKILL_NAME,
-            description: CUSTOMIZE_OPENCODE_SKILL_DESCRIPTION,
-            location: "<built-in>",
-            content: CUSTOMIZE_OPENCODE_SKILL_BODY,
-          }
-        }
+        // BrowserCode-specific: the upstream `customize-opencode` built-in
+        // registration was removed here. The skill teaches the model
+        // opencode.json / opencode plugin authoring and is irrelevant to
+        // browser-driving workflows; eval traces showed it correlated with
+        // a score regression. A user-disk skill of the same name still
+        // loads normally through the regular discovery path.
         yield* loadSkills(s, yield* InstanceState.get(discovered), bus)
         return s
       }),
