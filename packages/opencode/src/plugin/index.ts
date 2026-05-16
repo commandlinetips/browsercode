@@ -244,12 +244,24 @@ export const layer = Layer.effect(
           }).pipe(Effect.ignore)
         }
 
-        // Subscribe to bus events, fiber interrupted when scope closes
+        // Subscribe to bus events, fiber interrupted when scope closes.
+        // session.idle and server.instance.disposed are plugins' only chance to
+        // drain async work (e.g. OTel span exporters) before src/index.ts's
+        // top-level finally runs forceFlush and calls process.exit() — await
+        // those handlers; keep the rest fire-and-forget for throughput.
         yield* bus.subscribeAll().pipe(
           Stream.runForEach((input) =>
-            Effect.sync(() => {
+            Effect.promise(async () => {
+              const awaitHook = input.type === "server.instance.disposed" || input.type === "session.idle"
               for (const hook of hooks) {
-                void hook["event"]?.({ event: input as any })
+                const ret = hook["event"]?.({ event: input as any })
+                if (awaitHook && ret) {
+                  try {
+                    await ret
+                  } catch (err) {
+                    log.error("plugin event hook failed", { error: err })
+                  }
+                }
               }
             }),
           ),
