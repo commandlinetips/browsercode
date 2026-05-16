@@ -254,13 +254,13 @@ export const layer = Layer.effect(
             Effect.promise(async () => {
               const awaitHook = input.type === "server.instance.disposed" || input.type === "session.idle"
               for (const hook of hooks) {
-                const ret = hook["event"]?.({ event: input as any })
-                if (awaitHook && ret) {
-                  try {
-                    await ret
-                  } catch (err) {
-                    log.error("plugin event hook failed", { error: err })
-                  }
+                try {
+                  const ret = hook["event"]?.({ event: input as any })
+                  if (awaitHook && ret) await ret
+                } catch (err) {
+                  // Isolate plugin failures: a sync throw or async rejection from one plugin
+                  // must not kill the subscription fiber and silently disable every other plugin.
+                  log.error("plugin event hook failed", { error: err })
                 }
               }
             }),
