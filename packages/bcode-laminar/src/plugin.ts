@@ -90,56 +90,21 @@ export const LaminarPlugin: Plugin = ({ client }) => {
         config.experimental = { ...(config.experimental ?? {}), openTelemetry: true }
       }
     },
-    // Synchronous end-of-turn drain. The bus-based session.idle /
-    // server.instance.disposed events race with Effect scope teardown in
-    // headless `bcode run` mode and don't reliably deliver, so the turn span
-    // was historically being left un-ended and never exported. The host calls
-    // this hook from its top-level finally before forceFlush, so span.end()
-    // here gets its export drained by the host's existing forceFlush race.
+    // End-of-process drain. The host calls this from its top-level finally
+    // before `process.exit()`. Awaits any forceFlush Promises kicked off by
+    // bus event handlers (session.idle, session.deleted) — those are orphan
+    // microtasks from the host's perspective and `process.exit()` would kill
+    // their in-flight OTLP HTTP exports otherwise. Host bounds this with
+    // `Promise.race([hooks, 3000ms])` so a wedged exporter cannot hang exit.
     shutdown: async () => {
-      // End any still-open turn spans, then drain. Awaits both an explicit
-      // forceFlush AND any pendingFlushes kicked off by the bus event
-      // handlers (session.idle, session.deleted) that the host doesn't
-      // otherwise wait for. The host's `Promise.race([hooks, 3000ms])`
-      // bounds this so a wedged exporter cannot hang `process.exit()`.
-      //
-      // The pendingFlushes set is the critical fix: session.idle's await
-      // on processor.forceFlush() is an orphan microtask from the host's
-      // perspective — it kicks off the OTLP HTTP export but `process.exit()`
-      // would kill the request mid-flight without us tracking it here.
-      //
-      // stderr writes go to v4-worker's bcode-output-<runId>.log so cloud
-      // verification can see whether this path executed. Temporary, will
-      // be removed once headless V4 telemetry is settled.
-      const sessionIds = Object.keys(sessionCurrentTurnSpan)
-      process.stderr.write(
-        `[bcode-laminar] shutdown: ending ${sessionIds.length} open turn span(s), waiting on ${pendingFlushes.size} pending flush(es)\n`,
-      )
-      for (const sessionId of sessionIds) {
+      for (const sessionId of Object.keys(sessionCurrentTurnSpan)) {
         const span = sessionCurrentTurnSpan[sessionId]
         if (!span) continue
-        try {
-          span.end()
-        } catch (err) {
-          process.stderr.write(
-            `[bcode-laminar] span.end threw for session ${sessionId}: ${(err as Error).message}\n`,
-          )
-        }
+        span.end()
         delete sessionCurrentTurnSpan[sessionId]
       }
-      const start = Date.now()
-      // Kick a final flush AND wait for any in-flight ones from bus handlers.
       trackFlush(processor.forceFlush())
-      try {
-        await Promise.all(Array.from(pendingFlushes))
-        process.stderr.write(
-          `[bcode-laminar] shutdown: all flushes done in ${Date.now() - start}ms\n`,
-        )
-      } catch (err) {
-        process.stderr.write(
-          `[bcode-laminar] shutdown: flush threw after ${Date.now() - start}ms: ${(err as Error).message}\n`,
-        )
-      }
+      await Promise.all(Array.from(pendingFlushes))
     },
     event: async ({ event }) => {
       switch (event.type) {
@@ -147,35 +112,22 @@ export const LaminarPlugin: Plugin = ({ client }) => {
           const sessionId = event.properties.sessionID
           const span = sessionCurrentTurnSpan[sessionId]
           if (span) {
-            const sid = span.spanContext().spanId
-            process.stderr.write(
-              `[bcode-laminar] session.idle: ending turn span ${sid} session=${sessionId}\n`,
-            )
             span.end()
             delete sessionCurrentTurnSpan[sessionId]
-          } else {
-            process.stderr.write(
-              `[bcode-laminar] session.idle: no turn span for session=${sessionId}\n`,
-            )
           }
-          // Track the flush Promise so the sync shutdown hook can await it
-          // before process.exit. Fire-and-forget from this fiber's POV.
+          // Track the flush Promise so the shutdown hook can await it before
+          // `process.exit()`. Fire-and-forget from this fiber's POV.
           trackFlush(processor.forceFlush())
           break
         }
         case "server.instance.disposed": {
           // End any turn spans still open so they're queued before the host
-          // calls our `shutdown` hook.
-          //
-          // Do NOT call `sdk.shutdown()` here. It unregisters the global
-          // TracerProvider AND closes the BatchSpanProcessor — both
-          // observed to fire mid-await in headless `bcode run` mode, after
-          // which the sync `shutdown` hook's `processor.forceFlush()` is a
-          // no-op and turn spans are silently dropped. The sync hook is now
-          // the single drain point; this handler just ends spans.
-          const entries = Object.entries(sessionCurrentTurnSpan)
-          process.stderr.write(`[bcode-laminar] server.instance.disposed: ending ${entries.length} open turn span(s)\n`)
-          for (const [sessionId, span] of entries) {
+          // calls our `shutdown` hook. Do NOT call `sdk.shutdown()` here —
+          // it unregisters the global TracerProvider and closes the BSP,
+          // both observed to fire mid-await in headless `bcode run` mode
+          // and silently drop the just-ended turn span. The shutdown hook
+          // is the single drain point.
+          for (const [sessionId, span] of Object.entries(sessionCurrentTurnSpan)) {
             span.end()
             delete sessionCurrentTurnSpan[sessionId]
           }
@@ -210,12 +162,7 @@ export const LaminarPlugin: Plugin = ({ client }) => {
       const isSubagent = Object.values(subagentSessionIds).some((children) =>
         children.has(sessionID),
       )
-      if (isSubagent || sessionCurrentTurnSpan[sessionID]) {
-        process.stderr.write(
-          `[bcode-laminar] chat.message: skip (isSubagent=${isSubagent}, hasOpen=${!!sessionCurrentTurnSpan[sessionID]}) session=${sessionID}\n`,
-        )
-        return
-      }
+      if (isSubagent || sessionCurrentTurnSpan[sessionID]) return
 
       const span = startTurnSpan({
         name: "turn",
@@ -232,9 +179,6 @@ export const LaminarPlugin: Plugin = ({ client }) => {
         },
       })
       sessionCurrentTurnSpan[sessionID] = span
-      process.stderr.write(
-        `[bcode-laminar] chat.message: created turn span ${span.spanContext().spanId} session=${sessionID}\n`,
-      )
     },
   })
 }
