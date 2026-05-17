@@ -255,13 +255,19 @@ try {
   // events race with Effect scope teardown and don't reliably reach plugin
   // subscribers in headless `bcode run` mode, so we expose a direct sync hook
   // (see packages/opencode/src/plugin/index.ts pluginShutdownHooks).
-  const { pluginShutdownHooks } = await import("./plugin")
-  for (const hook of pluginShutdownHooks) {
-    try {
-      hook()
-    } catch (err) {
-      Log.Default.error("plugin shutdown hook failed", { error: err })
+  // The import is wrapped so a module-load failure can't strand the process
+  // before forceFlush + process.exit() below.
+  try {
+    const { pluginShutdownHooks } = await import("./plugin")
+    for (const hook of pluginShutdownHooks) {
+      try {
+        hook()
+      } catch (err) {
+        Log.Default.error("plugin shutdown hook failed", { error: err })
+      }
     }
+  } catch (err) {
+    Log.Default.error("plugin shutdown import failed", { error: err })
   }
   // Drain any registered OTel span processors (e.g. bcode-laminar) before
   // exiting so the just-ended turn spans actually hit the wire. Bounded with

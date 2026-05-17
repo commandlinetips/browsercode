@@ -250,12 +250,24 @@ export const layer = Layer.effect(
           }).pipe(Effect.ignore)
         }
 
-        // Subscribe to bus events, fiber interrupted when scope closes
+        // Subscribe to bus events, fiber interrupted when scope closes.
+        // Isolate per-hook failures (sync throw or async rejection) so one bad
+        // plugin can't kill the subscription fiber and silently disable every
+        // other plugin's event handler for the rest of the process.
         yield* bus.subscribeAll().pipe(
           Stream.runForEach((input) =>
             Effect.sync(() => {
               for (const hook of hooks) {
-                void hook["event"]?.({ event: input as any })
+                try {
+                  const ret = hook["event"]?.({ event: input as any })
+                  if (ret) {
+                    void Promise.resolve(ret).catch((err) =>
+                      log.error("plugin event hook failed", { error: err }),
+                    )
+                  }
+                } catch (err) {
+                  log.error("plugin event hook failed", { error: err })
+                }
               }
             }),
           ),
@@ -267,10 +279,19 @@ export const layer = Layer.effect(
         // OTel spans (e.g. bcode-laminar's turn span) — the bus-based
         // session.idle / server.instance.disposed paths race with scope
         // teardown and don't reliably deliver, so plugins need a direct sync
-        // entry point.
+        // entry point. Deregister on instance disposal so multi-instance TUI
+        // mode doesn't accumulate stale closures across reopens.
+        const registered: Array<() => void> = []
         for (const hook of hooks) {
-          if (hook.shutdown) pluginShutdownHooks.add(hook.shutdown)
+          if (!hook.shutdown) continue
+          pluginShutdownHooks.add(hook.shutdown)
+          registered.push(hook.shutdown)
         }
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            for (const fn of registered) pluginShutdownHooks.delete(fn)
+          }),
+        )
 
         return { hooks }
       }),
