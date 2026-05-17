@@ -82,10 +82,23 @@ export const LaminarPlugin: Plugin = ({ client }) => {
     // this hook from its top-level finally before forceFlush, so span.end()
     // here gets its export drained by the host's existing forceFlush race.
     shutdown: () => {
-      for (const [sessionId, span] of Object.entries(sessionCurrentTurnSpan)) {
-        span.end()
+      // Use console.error not client.app.log — the SDK server may already be
+      // torn down by shutdown time, and the host log is async via HTTP which
+      // doesn't honor the sync shutdown contract. v4-worker captures stderr
+      // into bcode-output-<runId>.log so this lands in the cloud artifact.
+      const sessionIds = Object.keys(sessionCurrentTurnSpan)
+      console.error(`[bcode-laminar] shutdown invoked: ending ${sessionIds.length} turn span(s)`)
+      for (const sessionId of sessionIds) {
+        const span = sessionCurrentTurnSpan[sessionId]
+        if (!span) continue
+        try {
+          span.end()
+        } catch (err) {
+          console.error(`[bcode-laminar] span.end() threw for session ${sessionId}: ${(err as Error).message}`)
+        }
         delete sessionCurrentTurnSpan[sessionId]
       }
+      console.error(`[bcode-laminar] shutdown complete`)
     },
     event: async ({ event }) => {
       switch (event.type) {
