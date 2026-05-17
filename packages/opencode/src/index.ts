@@ -249,52 +249,32 @@ try {
   }
   process.exitCode = 1
 } finally {
-  // Give plugins a synchronous chance to end any open OTel spans before the
-  // exporter drain below. The bus-based session.idle / server.instance.disposed
-  // events race with Effect scope teardown and don't reliably reach plugin
-  // subscribers in headless `bcode run` mode, so we expose a direct sync hook
-  // (see packages/opencode/src/plugin/index.ts pluginShutdownHooks).
-  // The import is wrapped so a module-load failure can't strand the process
-  // before forceFlush + process.exit() below.
-  // Plugin shutdown hooks are the single drain point. Each hook may return
-  // a Promise (e.g. bcode-laminar returning its BatchSpanProcessor's
-  // forceFlush) which we await with a 3s budget so a wedged exporter can't
-  // hang `process.exit()`. The previous fallback that called
-  // `trace.getTracerProvider().forceFlush()` was a no-op — the OTel API
-  // proxy provider doesn't expose forceFlush, and the bus-driven
-  // `server.instance.disposed` handler had often already called
-  // `sdk.shutdown()` and unregistered the global by the time we got here.
+  // Plugin shutdown hooks are the single drain point for OTel-based plugins
+  // (e.g. bcode-laminar). Each hook may return a Promise — bcode-laminar
+  // returns its BatchSpanProcessor's forceFlush plus any in-flight flushes
+  // kicked off by bus event handlers — which we await with a 3s budget so
+  // a wedged exporter cannot hang `process.exit()`.
   //
-  // stderr writes go to v4-worker's bcode-output-<runId>.log so cloud
-  // verification can see whether this path executed and how long it took.
-  // Will be removed once headless V4 telemetry is fully settled.
+  // The host-side fallback that called `trace.getTracerProvider().forceFlush()`
+  // was dropped: the OTel API's ProxyTracerProvider doesn't expose forceFlush,
+  // and the bus-driven `server.instance.disposed` handler used to call
+  // `sdk.shutdown()` and unregister the global before this finally ran.
+  // The plugin-owned drain (with closure ref to its own processor) is
+  // immune to both issues.
   try {
     const { pluginShutdownHooks } = await import("./plugin")
-    const hooks = Array.from(pluginShutdownHooks)
-    process.stderr.write(`[bcode] shutdown: invoking ${hooks.length} plugin shutdown hook(s)\n`)
-    const start = Date.now()
     await Promise.race([
       Promise.allSettled(
-        hooks.map((hook) =>
+        Array.from(pluginShutdownHooks).map((hook) =>
           Promise.resolve()
             .then(hook)
-            .catch((err: Error) => {
-              process.stderr.write(`[bcode] shutdown: hook threw: ${err.message}\n`)
-              Log.Default.error("plugin shutdown hook failed", { error: err })
-            }),
+            .catch((err: Error) => Log.Default.error("plugin shutdown hook failed", { error: err })),
         ),
       ),
-      new Promise<void>((resolve) =>
-        setTimeout(() => {
-          process.stderr.write(`[bcode] shutdown: timed out after 3000ms\n`)
-          resolve()
-        }, 3000),
-      ),
+      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
     ])
-    process.stderr.write(`[bcode] shutdown: done in ${Date.now() - start}ms\n`)
   } catch (err) {
     Log.Default.error("plugin shutdown import failed", { error: err })
-    process.stderr.write(`[bcode] shutdown: import failed: ${(err as Error).message}\n`)
   }
   // Some subprocesses don't react properly to SIGTERM and similar signals.
   // Most notably, some docker-container-based MCP servers don't handle such signals unless
