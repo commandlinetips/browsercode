@@ -127,10 +127,23 @@ export const LaminarPlugin: Plugin = ({ client }) => {
           const sessionId = event.properties.sessionID
           const span = sessionCurrentTurnSpan[sessionId]
           if (span) {
+            const sid = span.spanContext().spanId
+            process.stderr.write(`[bcode-laminar] session.idle: ending turn span ${sid} session=${sessionId}\n`)
             span.end()
             delete sessionCurrentTurnSpan[sessionId]
+            const start = Date.now()
+            try {
+              await processor.forceFlush()
+              process.stderr.write(`[bcode-laminar] session.idle: forceFlush done in ${Date.now() - start}ms\n`)
+            } catch (err) {
+              process.stderr.write(
+                `[bcode-laminar] session.idle: forceFlush threw after ${Date.now() - start}ms: ${(err as Error).message}\n`,
+              )
+            }
+          } else {
+            process.stderr.write(`[bcode-laminar] session.idle: no turn span for session=${sessionId}\n`)
+            await processor.forceFlush()
           }
-          await processor.forceFlush()
           break
         }
         case "server.instance.disposed": {
@@ -143,7 +156,9 @@ export const LaminarPlugin: Plugin = ({ client }) => {
           // which the sync `shutdown` hook's `processor.forceFlush()` is a
           // no-op and turn spans are silently dropped. The sync hook is now
           // the single drain point; this handler just ends spans.
-          for (const [sessionId, span] of Object.entries(sessionCurrentTurnSpan)) {
+          const entries = Object.entries(sessionCurrentTurnSpan)
+          process.stderr.write(`[bcode-laminar] server.instance.disposed: ending ${entries.length} open turn span(s)\n`)
+          for (const [sessionId, span] of entries) {
             span.end()
             delete sessionCurrentTurnSpan[sessionId]
           }
@@ -178,7 +193,12 @@ export const LaminarPlugin: Plugin = ({ client }) => {
       const isSubagent = Object.values(subagentSessionIds).some((children) =>
         children.has(sessionID),
       )
-      if (isSubagent || sessionCurrentTurnSpan[sessionID]) return
+      if (isSubagent || sessionCurrentTurnSpan[sessionID]) {
+        process.stderr.write(
+          `[bcode-laminar] chat.message: skip (isSubagent=${isSubagent}, hasOpen=${!!sessionCurrentTurnSpan[sessionID]}) session=${sessionID}\n`,
+        )
+        return
+      }
 
       const span = startTurnSpan({
         name: "turn",
@@ -195,6 +215,9 @@ export const LaminarPlugin: Plugin = ({ client }) => {
         },
       })
       sessionCurrentTurnSpan[sessionID] = span
+      process.stderr.write(
+        `[bcode-laminar] chat.message: created turn span ${span.spanContext().spanId} session=${sessionID}\n`,
+      )
     },
   })
 }
