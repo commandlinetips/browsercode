@@ -259,15 +259,24 @@ try {
   // before forceFlush + process.exit() below.
   try {
     const { pluginShutdownHooks } = await import("./plugin")
+    // Diagnostic via stderr: v4-worker captures into bcode-output-<runId>.log
+    // and we need to know whether this branch is even reached + how many hooks
+    // ran. Remove once V4 telemetry verification is settled.
+    process.stderr.write(`[bcode] shutdown: invoking ${pluginShutdownHooks.size} plugin shutdown hook(s)\n`)
+    let invoked = 0
     for (const hook of pluginShutdownHooks) {
       try {
         hook()
+        invoked++
       } catch (err) {
         Log.Default.error("plugin shutdown hook failed", { error: err })
+        process.stderr.write(`[bcode] shutdown: hook threw: ${(err as Error).message}\n`)
       }
     }
+    process.stderr.write(`[bcode] shutdown: invoked ${invoked}/${pluginShutdownHooks.size} hook(s) successfully\n`)
   } catch (err) {
     Log.Default.error("plugin shutdown import failed", { error: err })
+    process.stderr.write(`[bcode] shutdown: import failed: ${(err as Error).message}\n`)
   }
   // Drain any registered OTel span processors (e.g. bcode-laminar) before
   // exiting so the just-ended turn spans actually hit the wire. Bounded with
@@ -275,10 +284,22 @@ try {
   // OTel-based plugin, not laminar-specific.
   const provider = trace.getTracerProvider() as { forceFlush?: () => Promise<void> }
   if (provider.forceFlush) {
+    process.stderr.write(`[bcode] shutdown: forceFlush starting\n`)
+    const start = Date.now()
     await Promise.race([
-      provider.forceFlush().catch(() => {}),
-      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+      provider.forceFlush().catch((err: Error) => {
+        process.stderr.write(`[bcode] shutdown: forceFlush rejected: ${err.message}\n`)
+      }),
+      new Promise<void>((resolve) =>
+        setTimeout(() => {
+          process.stderr.write(`[bcode] shutdown: forceFlush timed out after 3000ms\n`)
+          resolve()
+        }, 3000),
+      ),
     ])
+    process.stderr.write(`[bcode] shutdown: forceFlush done in ${Date.now() - start}ms\n`)
+  } else {
+    process.stderr.write(`[bcode] shutdown: no forceFlush on global provider\n`)
   }
   // Some subprocesses don't react properly to SIGTERM and similar signals.
   // Most notably, some docker-container-based MCP servers don't handle such signals unless
