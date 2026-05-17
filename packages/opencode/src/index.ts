@@ -250,13 +250,23 @@ try {
   }
   process.exitCode = 1
 } finally {
+  // Give plugins a synchronous chance to end any open OTel spans before the
+  // exporter drain below. The bus-based session.idle / server.instance.disposed
+  // events race with Effect scope teardown and don't reliably reach plugin
+  // subscribers in headless `bcode run` mode, so we expose a direct sync hook
+  // (see packages/opencode/src/plugin/index.ts pluginShutdownHooks).
+  const { pluginShutdownHooks } = await import("./plugin")
+  for (const hook of pluginShutdownHooks) {
+    try {
+      hook()
+    } catch (err) {
+      Log.Default.error("plugin shutdown hook failed", { error: err })
+    }
+  }
   // Drain any registered OTel span processors (e.g. bcode-laminar) before
-  // exiting. The plugin's `session.idle` event handler is invoked
-  // fire-and-forget (`packages/opencode/src/plugin/index.ts:249`), so its
-  // `processor.forceFlush()` Promise was never awaited — without this drain,
-  // `process.exit()` kills any in-flight gRPC export and the final agent
-  // span is lost. Bounded with a 3 s race so a wedged exporter cannot hang
-  // bcode on exit. Generic to any OTel-based plugin, not laminar-specific.
+  // exiting so the just-ended turn spans actually hit the wire. Bounded with
+  // a 3 s race so a wedged exporter cannot hang bcode on exit. Generic to any
+  // OTel-based plugin, not laminar-specific.
   const provider = trace.getTracerProvider() as { forceFlush?: () => Promise<void> }
   if (provider.forceFlush) {
     await Promise.race([

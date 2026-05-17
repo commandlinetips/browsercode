@@ -32,6 +32,12 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 
 const log = Log.create({ service: "plugin" })
 
+// Synchronous shutdown hooks invoked from src/index.ts's top-level finally
+// before forceFlush. Plugins register here when loaded; runs once per
+// process before process.exit(). Module-level intentionally — needs to be
+// reachable outside the Effect runtime.
+export const pluginShutdownHooks = new Set<() => void>()
+
 type State = {
   hooks: Hooks[]
 }
@@ -244,37 +250,27 @@ export const layer = Layer.effect(
           }).pipe(Effect.ignore)
         }
 
-        // Subscribe to bus events, fiber interrupted when scope closes.
-        // session.idle and server.instance.disposed are plugins' only chance to
-        // drain async work (e.g. OTel span exporters) before src/index.ts's
-        // top-level finally runs forceFlush and calls process.exit() — await
-        // those handlers; keep the rest fire-and-forget for throughput.
+        // Subscribe to bus events, fiber interrupted when scope closes
         yield* bus.subscribeAll().pipe(
           Stream.runForEach((input) =>
-            Effect.promise(async () => {
-              const awaitHook = input.type === "server.instance.disposed" || input.type === "session.idle"
+            Effect.sync(() => {
               for (const hook of hooks) {
-                try {
-                  const ret = hook["event"]?.({ event: input as any })
-                  if (awaitHook && ret) {
-                    await ret
-                  } else if (ret) {
-                    // Fire-and-forget path: surface async failures to logs instead of letting them
-                    // become unhandledRejections that hide which plugin/event broke.
-                    void Promise.resolve(ret).catch((err) =>
-                      log.error("plugin event hook failed", { error: err }),
-                    )
-                  }
-                } catch (err) {
-                  // Catches sync throws + awaited async rejections so one bad plugin can't kill
-                  // the subscription fiber and silently disable every other plugin.
-                  log.error("plugin event hook failed", { error: err })
-                }
+                void hook["event"]?.({ event: input as any })
               }
             }),
           ),
           Effect.forkScoped,
         )
+
+        // Register synchronous shutdown hooks for the top-level finally in
+        // src/index.ts. Runs before forceFlush so plugins can end any open
+        // OTel spans (e.g. bcode-laminar's turn span) — the bus-based
+        // session.idle / server.instance.disposed paths race with scope
+        // teardown and don't reliably deliver, so plugins need a direct sync
+        // entry point.
+        for (const hook of hooks) {
+          if (hook.shutdown) pluginShutdownHooks.add(hook.shutdown)
+        }
 
         return { hooks }
       }),
