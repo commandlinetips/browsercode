@@ -279,19 +279,17 @@ export const layer = Layer.effect(
         // OTel spans (e.g. bcode-laminar's turn span) — the bus-based
         // session.idle / server.instance.disposed paths race with scope
         // teardown and don't reliably deliver, so plugins need a direct sync
-        // entry point. Deregister on instance disposal so multi-instance TUI
-        // mode doesn't accumulate stale closures across reopens.
-        const registered: Array<() => void> = []
+        // entry point.
+        //
+        // Intentionally NOT deregistered on scope close: the plugin-layer
+        // scope (under InstanceState) closes BEFORE the top-level finally in
+        // src/index.ts runs (via store.dispose(ctx) in effect-cmd's own
+        // finally). A scope-close finalizer would empty the Set before the
+        // host could call it, defeating the entire feature. Multi-instance
+        // TUI bloat from accumulated closures is acceptable.
         for (const hook of hooks) {
-          if (!hook.shutdown) continue
-          pluginShutdownHooks.add(hook.shutdown)
-          registered.push(hook.shutdown)
+          if (hook.shutdown) pluginShutdownHooks.add(hook.shutdown)
         }
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => {
-            for (const fn of registered) pluginShutdownHooks.delete(fn)
-          }),
-        )
 
         return { hooks }
       }),
