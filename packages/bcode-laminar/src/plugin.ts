@@ -75,6 +75,18 @@ export const LaminarPlugin: Plugin = ({ client }) => {
         config.experimental = { ...(config.experimental ?? {}), openTelemetry: true }
       }
     },
+    // Synchronous end-of-turn drain. The bus-based session.idle /
+    // server.instance.disposed events race with Effect scope teardown in
+    // headless `bcode run` mode and don't reliably deliver, so the turn span
+    // was historically being left un-ended and never exported. The host calls
+    // this hook from its top-level finally before forceFlush, so span.end()
+    // here gets its export drained by the host's existing forceFlush race.
+    shutdown: () => {
+      for (const [sessionId, span] of Object.entries(sessionCurrentTurnSpan)) {
+        span.end()
+        delete sessionCurrentTurnSpan[sessionId]
+      }
+    },
     event: async ({ event }) => {
       switch (event.type) {
         case "session.idle": {

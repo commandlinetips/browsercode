@@ -222,6 +222,15 @@ export type AuthOuathResult = AuthOAuthResult
 export interface Hooks {
   event?: (input: { event: Event }) => Promise<void>
   config?: (input: Config) => Promise<void>
+  /**
+   * Synchronous shutdown hook invoked once per process before
+   * `process.exit()`, after the event loop has finished its last task and
+   * before the host's OTel span exporter drain. Use this to end any
+   * still-open OTel spans your plugin created — async work is not honored
+   * here, but ending a span (`span.end()`) is synchronous and the host's
+   * `forceFlush` runs right after this hook.
+   */
+  shutdown?: () => void
   tool?: {
     [key: string]: ToolDefinition
   }
