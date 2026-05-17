@@ -223,14 +223,19 @@ export interface Hooks {
   event?: (input: { event: Event }) => Promise<void>
   config?: (input: Config) => Promise<void>
   /**
-   * Synchronous shutdown hook invoked once per process before
-   * `process.exit()`, after the event loop has finished its last task and
-   * before the host's OTel span exporter drain. Use this to end any
-   * still-open OTel spans your plugin created — async work is not honored
-   * here, but ending a span (`span.end()`) is synchronous and the host's
-   * `forceFlush` runs right after this hook.
+   * Shutdown hook invoked once per process before `process.exit()`. Runs
+   * AFTER the Effect runtime has torn down (so bus event handlers can no
+   * longer be relied upon) and BEFORE `process.exit()`.
+   *
+   * Returning a Promise lets the host drain async work — e.g. an OTel span
+   * exporter's `forceFlush()` — before the process actually exits. The host
+   * races each returned Promise against a bounded timeout so a wedged hook
+   * cannot hang shutdown.
+   *
+   * Use this to end any still-open spans your plugin created and, if you
+   * own a span exporter, return its `forceFlush()` Promise.
    */
-  shutdown?: () => void
+  shutdown?: () => void | Promise<void>
   tool?: {
     [key: string]: ToolDefinition
   }

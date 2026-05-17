@@ -45,7 +45,6 @@ import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { drizzle } from "drizzle-orm/bun-sqlite"
 import { ensureProcessMetadata } from "@opencode-ai/core/util/opencode-process"
-import { trace } from "@opentelemetry/api"
 import { isRecord } from "@/util/record"
 
 const processMetadata = ensureProcessMetadata("main")
@@ -257,49 +256,45 @@ try {
   // (see packages/opencode/src/plugin/index.ts pluginShutdownHooks).
   // The import is wrapped so a module-load failure can't strand the process
   // before forceFlush + process.exit() below.
+  // Plugin shutdown hooks are the single drain point. Each hook may return
+  // a Promise (e.g. bcode-laminar returning its BatchSpanProcessor's
+  // forceFlush) which we await with a 3s budget so a wedged exporter can't
+  // hang `process.exit()`. The previous fallback that called
+  // `trace.getTracerProvider().forceFlush()` was a no-op — the OTel API
+  // proxy provider doesn't expose forceFlush, and the bus-driven
+  // `server.instance.disposed` handler had often already called
+  // `sdk.shutdown()` and unregistered the global by the time we got here.
+  //
+  // stderr writes go to v4-worker's bcode-output-<runId>.log so cloud
+  // verification can see whether this path executed and how long it took.
+  // Will be removed once headless V4 telemetry is fully settled.
   try {
     const { pluginShutdownHooks } = await import("./plugin")
-    // Diagnostic via stderr: v4-worker captures into bcode-output-<runId>.log
-    // and we need to know whether this branch is even reached + how many hooks
-    // ran. Remove once V4 telemetry verification is settled.
-    process.stderr.write(`[bcode] shutdown: invoking ${pluginShutdownHooks.size} plugin shutdown hook(s)\n`)
-    let invoked = 0
-    for (const hook of pluginShutdownHooks) {
-      try {
-        hook()
-        invoked++
-      } catch (err) {
-        Log.Default.error("plugin shutdown hook failed", { error: err })
-        process.stderr.write(`[bcode] shutdown: hook threw: ${(err as Error).message}\n`)
-      }
-    }
-    process.stderr.write(`[bcode] shutdown: invoked ${invoked}/${pluginShutdownHooks.size} hook(s) successfully\n`)
-  } catch (err) {
-    Log.Default.error("plugin shutdown import failed", { error: err })
-    process.stderr.write(`[bcode] shutdown: import failed: ${(err as Error).message}\n`)
-  }
-  // Drain any registered OTel span processors (e.g. bcode-laminar) before
-  // exiting so the just-ended turn spans actually hit the wire. Bounded with
-  // a 3 s race so a wedged exporter cannot hang bcode on exit. Generic to any
-  // OTel-based plugin, not laminar-specific.
-  const provider = trace.getTracerProvider() as { forceFlush?: () => Promise<void> }
-  if (provider.forceFlush) {
-    process.stderr.write(`[bcode] shutdown: forceFlush starting\n`)
+    const hooks = Array.from(pluginShutdownHooks)
+    process.stderr.write(`[bcode] shutdown: invoking ${hooks.length} plugin shutdown hook(s)\n`)
     const start = Date.now()
     await Promise.race([
-      provider.forceFlush().catch((err: Error) => {
-        process.stderr.write(`[bcode] shutdown: forceFlush rejected: ${err.message}\n`)
-      }),
+      Promise.allSettled(
+        hooks.map((hook) =>
+          Promise.resolve()
+            .then(hook)
+            .catch((err: Error) => {
+              process.stderr.write(`[bcode] shutdown: hook threw: ${err.message}\n`)
+              Log.Default.error("plugin shutdown hook failed", { error: err })
+            }),
+        ),
+      ),
       new Promise<void>((resolve) =>
         setTimeout(() => {
-          process.stderr.write(`[bcode] shutdown: forceFlush timed out after 3000ms\n`)
+          process.stderr.write(`[bcode] shutdown: timed out after 3000ms\n`)
           resolve()
         }, 3000),
       ),
     ])
-    process.stderr.write(`[bcode] shutdown: forceFlush done in ${Date.now() - start}ms\n`)
-  } else {
-    process.stderr.write(`[bcode] shutdown: no forceFlush on global provider\n`)
+    process.stderr.write(`[bcode] shutdown: done in ${Date.now() - start}ms\n`)
+  } catch (err) {
+    Log.Default.error("plugin shutdown import failed", { error: err })
+    process.stderr.write(`[bcode] shutdown: import failed: ${(err as Error).message}\n`)
   }
   // Some subprocesses don't react properly to SIGTERM and similar signals.
   // Most notably, some docker-container-based MCP servers don't handle such signals unless
