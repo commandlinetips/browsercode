@@ -81,24 +81,45 @@ export const LaminarPlugin: Plugin = ({ client }) => {
     // was historically being left un-ended and never exported. The host calls
     // this hook from its top-level finally before forceFlush, so span.end()
     // here gets its export drained by the host's existing forceFlush race.
-    shutdown: () => {
-      // Use console.error not client.app.log — the SDK server may already be
-      // torn down by shutdown time, and the host log is async via HTTP which
-      // doesn't honor the sync shutdown contract. v4-worker captures stderr
-      // into bcode-output-<runId>.log so this lands in the cloud artifact.
+    shutdown: async () => {
+      // End any still-open turn spans synchronously, then drain the inner
+      // BatchSpanProcessor. The host awaits this Promise with a bounded
+      // race so a wedged exporter cannot hang `process.exit()`.
+      //
+      // This runs AFTER the Effect runtime has torn down. The bus-based
+      // session.idle / server.instance.disposed handlers may have already
+      // emptied `sessionCurrentTurnSpan` and unregistered the global
+      // TracerProvider via `sdk.shutdown()`. Either way, the BSP itself
+      // still has its queue intact and can drain — we hold a direct ref
+      // to `processor` via closure.
+      //
+      // stderr writes go to v4-worker's bcode-output-<runId>.log so cloud
+      // verification can see whether this path executed. Temporary, will
+      // be removed once headless V4 telemetry is settled.
       const sessionIds = Object.keys(sessionCurrentTurnSpan)
-      console.error(`[bcode-laminar] shutdown invoked: ending ${sessionIds.length} turn span(s)`)
+      process.stderr.write(`[bcode-laminar] shutdown: ending ${sessionIds.length} open turn span(s)\n`)
       for (const sessionId of sessionIds) {
         const span = sessionCurrentTurnSpan[sessionId]
         if (!span) continue
         try {
           span.end()
         } catch (err) {
-          console.error(`[bcode-laminar] span.end() threw for session ${sessionId}: ${(err as Error).message}`)
+          process.stderr.write(
+            `[bcode-laminar] span.end threw for session ${sessionId}: ${(err as Error).message}\n`,
+          )
         }
         delete sessionCurrentTurnSpan[sessionId]
       }
-      console.error(`[bcode-laminar] shutdown complete`)
+      process.stderr.write(`[bcode-laminar] shutdown: forceFlush start\n`)
+      const start = Date.now()
+      try {
+        await processor.forceFlush()
+        process.stderr.write(`[bcode-laminar] shutdown: forceFlush done in ${Date.now() - start}ms\n`)
+      } catch (err) {
+        process.stderr.write(
+          `[bcode-laminar] shutdown: forceFlush threw after ${Date.now() - start}ms: ${(err as Error).message}\n`,
+        )
+      }
     },
     event: async ({ event }) => {
       switch (event.type) {
@@ -113,16 +134,20 @@ export const LaminarPlugin: Plugin = ({ client }) => {
           break
         }
         case "server.instance.disposed": {
-          // End any turn spans still open so they're flushed before shutdown.
+          // End any turn spans still open so they're queued before the host
+          // calls our `shutdown` hook.
+          //
+          // Do NOT call `sdk.shutdown()` here. It unregisters the global
+          // TracerProvider AND closes the BatchSpanProcessor — both
+          // observed to fire mid-await in headless `bcode run` mode, after
+          // which the sync `shutdown` hook's `processor.forceFlush()` is a
+          // no-op and turn spans are silently dropped. The sync hook is now
+          // the single drain point; this handler just ends spans.
           for (const [sessionId, span] of Object.entries(sessionCurrentTurnSpan)) {
             span.end()
             delete sessionCurrentTurnSpan[sessionId]
           }
           for (const key of Object.keys(subagentSessionIds)) delete subagentSessionIds[key]
-          // sdk.shutdown() drains the inner BatchSpanProcessor and exporter
-          // and removes the global TracerProvider; explicit processor.shutdown()
-          // is redundant but harmless.
-          await sdk.shutdown().catch(() => {})
           break
         }
         case "session.created":
