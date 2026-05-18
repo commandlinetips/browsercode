@@ -390,6 +390,21 @@ function applyCaching(msgs: ModelMessage[], model: Provider.Model): ModelMessage
 }
 
 function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
+  // @ai-sdk/openai-compatible is the user-configured proxy provider — there is
+  // no models.dev entry to consult, so model.capabilities.input.{image,audio,
+  // video,pdf} all silently default to false (provider.ts:1298-1304) unless
+  // the user explicitly declares `modalities` in opencode.json. Replacing
+  // every image/file part with an inline ERROR text part in that case is a
+  // silent footgun: bcode strips the screenshot before the wire and the
+  // model receives "ERROR: Cannot read image..." as if it came from the user,
+  // producing nonsensical replies ("I can't see the image"). The honest
+  // behavior is to forward the part — upstream returns a real provider error
+  // if it truly can't handle it, which is far more debuggable than fabricated
+  // capability text. Native providers (@ai-sdk/anthropic, @ai-sdk/openai,
+  // @ai-sdk/google, @ai-sdk/amazon-bedrock) keep the check because models.dev
+  // is authoritative for them.
+  if (model.api.npm === "@ai-sdk/openai-compatible") return msgs
+
   return msgs.map((msg) => {
     if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
 
