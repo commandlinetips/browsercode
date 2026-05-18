@@ -1,35 +1,16 @@
-<img src="static/browsercode_ascii_banner.svg" alt="Animated BrowserCode ASCII banner" width="100%">
+<img src="static/browsercode_ascii_banner.svg" alt="browsercode" width="100%">
 
-<div align="center">
-<h2>The browser-native agent framework.</h2>
-</div>
-
-<div align="center">
-<a href="#demos"><img src="https://media.browser-use.tools/badges/demos" alt="Demos"></a>
-<img width="16" height="1" alt="">
-<a href="https://docs.browser-use.com"><img src="https://media.browser-use.tools/badges/docs" alt="Docs"></a>
-<img width="16" height="1" alt="">
-<a href="https://browser-use.com/posts"><img src="https://media.browser-use.tools/badges/blog" alt="Blog"></a>
-<img width="280" height="1" alt="">
-<a href="https://github.com/browser-use/browser-use"><img src="https://media.browser-use.tools/badges/github" alt="Github Stars"></a>
-<img width="4" height="1" alt="">
-<a href="https://x.com/intent/user?screen_name=browser_use"><img src="https://media.browser-use.tools/badges/twitter" alt="Twitter"></a>
-<img width="4" height="1" alt="">
-<a href="https://link.browser-use.com/discord"><img src="https://media.browser-use.tools/badges/discord" alt="Discord"></a>
-</div>
+# The browser-native agent.
 
 <br/>
-
-# BrowserCode
 
 A streamlined coding agent that drives real browsers through unconstrained CDP.
 
 The unbounded power of the browser working seamlessly with your code. The agent adapts to every site at runtime and writes scripts to reuse later.
 
-<span id="demos"></span>
 <!-- DEMO VIDEO HERE -->
 
-## One-Line Install Command
+## One-Line Install
 
 Run this in a terminal that supports bash:
 
@@ -53,17 +34,15 @@ bcode run "On Google flights return all flight details from New York to SF tomor
 
 ### Connect an LLM
 
-BrowserCode supports any model you can reach with an API key, plus every provider OpenCode supports.
-
-[OpenCode provider docs](https://opencode.ai/docs/providers)
-
-Use `/connect` in the TUI, or set provider API keys in your environment.
-
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="static/browser_harness_by_model_light.png">
   <source media="(prefers-color-scheme: dark)" srcset="static/browser_harness_by_model_dark.png">
   <img alt="BU Bench V1 Browser Harness bcode v0.0.3 accuracy by model, led by claude-opus-4-7, gpt-5.5, mimo-v2.5-pro, and glm-5.1" src="static/browser_harness_by_model_light.png" width="100%">
 </picture>
+
+BrowserCode supports any model you can reach with an API key, plus [every provider OpenCode supports](https://opencode.ai/docs/providers).
+
+Use `/connect` in the TUI, or set provider API keys in your environment.
 
 Recommended models from current BrowserCode evals:
 
@@ -73,22 +52,24 @@ Recommended models from current BrowserCode evals:
 
 ### Connect a Browser
 
-Let the agent connect for you. It knows how. You can prompt:
+**Let the agent connect for you.** It knows how. 
+
+You can prompt:
 
 ```text
-Connect to my current tab at https://amazon.com and look for a better deal for 64GB DDR5 RAM and return the URLs
+Connect to my current tab on amazon.com and find deals for 64GB DDR5 RAM, return URLs
 ```
 
 The agent will take control of your actual browser.
 
 ```text
-Make a new browser profile and work in the background to QA test http://localhost:3000, fix any bugs and open a PR
+Make a new browser profile and QA test http://localhost:3000, fix bugs and open a PR
 ```
 
 The agent will work locally in its own browser profile.
 
 ```text
-Open a remote browser and extract every item sold at https://mcdonalds.com in SF
+Open a remote browser and extract every item sold on mcdonalds.com in SF
 ```
 
 The agent will control a Browser Use Cloud browser and give you a link to watch it.
@@ -98,13 +79,11 @@ The agent will control a Browser Use Cloud browser and give you a link to watch 
 - Browser Use Cloud offers unlimited free browsers, limited to 3 concurrent sessions, with stealth, captcha solving, and proxies.
 - Just set `BROWSER_USE_API_KEY` in your environment. The agent can sign up completely autonomously; just ask it to. To upgrade further, go to [cloud.browser-use.com](https://cloud.browser-use.com).
 
-## Philosophy
+## Philosophy: do more with less
 
 Browser ability and code-writing ability are deeply connected.
 
-We turned browser interaction into a coding problem; the agent writes JavaScript that drives Chrome directly through CDP. Maximal power to the agent. Minimal abstractions. 
-
-#### Do more with less.
+We turned browser interaction into a coding problem; the agent writes JavaScript that drives Chrome directly through CDP. Minimal abstractions. Maximal power to the agent. 
 
 *BrowserCode outperforms every browser agent we have tested it against.*
 
