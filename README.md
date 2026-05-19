@@ -129,8 +129,6 @@ bun install
 bun run --cwd packages/opencode dev
 ```
 
----
+<hr>
 
-<p align="center">Tell your computer what to do, and it gets it done.</p>
-
-<!-- FOOTER IMAGE HERE -->
+<img src="static/browsercode_ascii_readme.webp" alt="browsercode ascii footer" width="100%">
