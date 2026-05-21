@@ -1,6 +1,6 @@
 <img src="static/browsercode_ascii_banner.svg" alt="browsercode" width="100%">
 
-# The browser-native agent.
+# The browser-native agent
 
 <br/>
 
