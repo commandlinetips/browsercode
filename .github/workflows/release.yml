@@ -4,7 +4,13 @@ name: release
 # the GitHub Release matching the pushed tag.
 #
 # Trigger:
-#   - Push a tag matching `v*` (e.g. `v0.0.3`).
+#   - Push a tag matching `v*` (e.g. `v0.0.3`, `v0.1.9-rc2`).
+#
+# Tag-name convention:
+#   - Stable: bare semver `vX.Y.Z` (e.g. `v0.1.9`). Marked `--latest` so
+#     install.sh's `/releases/latest` lookup resolves it.
+#   - Prerelease: hyphen-suffixed `vX.Y.Z-<thing>` (e.g. `v0.1.9-rc2`,
+#     `v0.2.0-beta1`). Marked `--prerelease` so install.sh skips it.
 #
 # Behaviour:
 #   1. Reuses the existing `packages/opencode/script/build.ts` matrix
@@ -15,9 +21,10 @@ name: release
 #      `dist/bcode-<os>-<arch>...{.tar.gz,.zip}` and uploads via `gh release
 #      upload --clobber`.
 #
-# Pre-condition: the tag must already have an existing GitHub Release
-# (created either manually with `gh release create vX.Y.Z` or by an upcoming
-# release-creation workflow). `--clobber` lets re-runs replace assets.
+# Pre-condition: if a Release for the tag doesn't already exist this workflow
+# creates one (with the correct prerelease flag derived from the tag name).
+# If one already exists its flags are not touched — fix manually via
+# `gh release edit` if needed.
 
 on:
   push:
@@ -94,15 +101,35 @@ jobs:
       - name: Ensure GitHub Release exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
           # `build.ts` uploads via `gh release upload --clobber`, which requires
-          # the release to exist. --latest makes it visible to releases/latest
-          # (what install.sh queries).
-          if ! gh release view "${{ steps.ver.outputs.tag }}" >/dev/null 2>&1; then
-            gh release create "${{ steps.ver.outputs.tag }}" \
+          # the release to exist.
+          #
+          # Tag-name convention: prereleases use a hyphen suffix (e.g.
+          # `v0.1.9-rc2`, `v0.2.0-beta1`). Stable releases are bare semver
+          # (`v0.1.9`). We map that convention onto GitHub's flags:
+          #   - stable: `--latest` so install.sh's `/releases/latest` resolves it.
+          #   - prerelease: `--prerelease` and NOT `--latest`, so install.sh
+          #     skips it. Otherwise an RC becomes the default install target
+          #     (precedent: v0.1.9-rc2 was unflagged and the one-liner installed
+          #     it).
+          #
+          # Re-runs: if the release already exists (e.g. manually pre-created),
+          # we don't touch its flags here. Fix it manually via `gh release edit`.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            exit 0
+          fi
+          if [[ "$TAG" == *-* ]]; then
+            gh release create "$TAG" \
+              --prerelease \
+              --title "$TAG" \
+              --notes "Automated build for $TAG."
+          else
+            gh release create "$TAG" \
               --latest \
-              --title "${{ steps.ver.outputs.tag }}" \
-              --notes "Automated build for ${{ steps.ver.outputs.tag }}."
+              --title "$TAG" \
+              --notes "Automated build for $TAG."
           fi
 
       - name: Build all targets and upload to release
