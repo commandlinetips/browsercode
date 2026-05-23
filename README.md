@@ -37,7 +37,7 @@ bcode run "On Google flights return all flight details from New York to SF tomor
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="static/browser_harness_by_model_light.png">
   <source media="(prefers-color-scheme: dark)" srcset="static/browser_harness_by_model_dark.png">
-  <img alt="BU Bench V1 Browser Harness bcode v0.0.3 accuracy by model, led by claude-opus-4-7, gpt-5.5, mimo-v2.5-pro, and glm-5.1" src="static/browser_harness_by_model_light.png" width="100%">
+  <img alt="Performance of LLMs with BrowserCode on BU Bench V1" src="static/browser_harness_by_model_light.png" width="100%">
 </picture>
 
 BrowserCode supports any model you can reach with an API key, plus [every provider OpenCode supports](https://opencode.ai/docs/providers).
