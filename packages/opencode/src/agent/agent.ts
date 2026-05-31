@@ -1,4 +1,5 @@
 import { Config } from "@/config/config"
+import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "../provider/schema"
 import { generateObject, streamObject, type ModelMessage } from "ai"
@@ -16,11 +17,11 @@ import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
 import { Skills } from "@browser-use/bcode-browser/skills"
-import { Flag } from "@opencode-ai/core/flag/flag"
 import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
 import { Reference } from "@/reference/reference"
+import { ConfigReference } from "@/config/reference"
 import { Effect, Context, Layer, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -71,13 +72,15 @@ export interface Interface {
       whenToUse: string
       systemPrompt: string
     },
-    Provider.ModelNotFoundError
+    Provider.DefaultModelError
   >
 }
 
 type State = Omit<Interface, "generate">
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Agent") {}
+
+export const use = serviceUse(Service)
 
 export const layer = Layer.effect(
   Service,
@@ -367,9 +370,9 @@ export const layer = Layer.effect(
           return `Invalid Scout reference for repository ${reference.repository}`
         }
 
-        if (Flag.OPENCODE_EXPERIMENTAL_SCOUT) {
+        if (flags.experimentalScout) {
           const resolvedReferences = Reference.resolveAll({
-            references: cfg.reference ?? {},
+            references: ConfigReference.normalize(cfg.reference ?? {}),
             directory: ctx.directory,
             worktree: ctx.worktree,
           })

@@ -1,4 +1,5 @@
 import { Effect, Layer, Schema, Context, Stream } from "effect"
+import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { ChildProcess } from "effect/unstable/process"
@@ -65,7 +66,11 @@ export function isLocal() {
 
 export class UpgradeFailedError extends Schema.TaggedErrorClass<UpgradeFailedError>()("UpgradeFailedError", {
   stderr: Schema.String,
-}) {}
+}) {
+  override get message() {
+    return this.stderr
+  }
+}
 
 // BrowserCode currently only ships the curl installer (https://bcode.sh/install).
 // npm/brew/scoop/choco branches are stubbed: `method()` only returns "curl"
@@ -82,6 +87,8 @@ export interface Interface {
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Installation") {}
+
+export const use = serviceUse(Service)
 
 export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Service> = Layer.effect(
   Service,
