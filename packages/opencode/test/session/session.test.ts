@@ -35,7 +35,7 @@ const awaitDeferred = <T>(deferred: Deferred.Deferred<T>, message: string) =>
     Effect.sleep("2 seconds").pipe(Effect.flatMap(() => Effect.fail(new Error(message)))),
   )
 
-const remove = (id: SessionID) => SessionNs.Service.use((svc) => svc.remove(id))
+const remove = (id: SessionID) => SessionNs.use.remove(id)
 
 const subscribeGlobal = (type: string, callback: (event: NonNullable<GlobalEvent["payload"]>) => void) => {
   const listener = (event: GlobalEvent) => {
@@ -182,6 +182,37 @@ describe("Session", () => {
 
       const getExit = yield* session.get(info.id).pipe(Effect.exit)
       expect(Exit.isFailure(getExit)).toBe(true)
+    }),
+  )
+
+  it.instance("persists metadata and copies it on fork by default", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const meta = { source: "sdk", trace: { id: "abc" } }
+      const created = yield* Effect.acquireRelease(session.create({ title: "with-meta", metadata: meta }), (info) =>
+        session.remove(info.id).pipe(Effect.ignore),
+      )
+      const saved = yield* session.get(created.id)
+      const fork = yield* Effect.acquireRelease(session.fork({ sessionID: created.id }), (info) =>
+        session.remove(info.id).pipe(Effect.ignore),
+      )
+
+      expect(saved.metadata).toEqual(meta)
+      expect(fork.metadata).toEqual(meta)
+      expect(fork.metadata).not.toBe(meta)
+    }),
+  )
+
+  it.instance("omits metadata when not provided", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const created = yield* Effect.acquireRelease(session.create({ title: "empty-meta" }), (info) =>
+        session.remove(info.id).pipe(Effect.ignore),
+      )
+      const saved = yield* session.get(created.id)
+
+      expect(created.metadata).toBeUndefined()
+      expect(saved.metadata).toBeUndefined()
     }),
   )
 })
