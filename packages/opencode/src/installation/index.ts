@@ -1,3 +1,5 @@
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { httpClient } from "@opencode-ai/core/effect/layer-node-platform"
 import { Effect, Layer, Schema, Context, Stream } from "effect"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
@@ -5,32 +7,30 @@ import { withTransientReadRetry } from "@/util/effect-http-client"
 import { ChildProcess } from "effect/unstable/process"
 import { AppProcess } from "@opencode-ai/core/process"
 import path from "path"
-import { BusEvent } from "@/bus/bus-event"
-import * as Log from "@opencode-ai/core/util/log"
+import { EventV2 } from "@opencode-ai/core/event"
 import { makeRuntime } from "@opencode-ai/core/effect/runtime"
 import semver from "semver"
 import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
 import { Flag } from "@opencode-ai/core/flag/flag"
-
-const log = Log.create({ service: "installation" })
+import { errorMessage } from "@/util/error"
 
 export type Method = "curl" | "npm" | "yarn" | "pnpm" | "bun" | "brew" | "scoop" | "choco" | "unknown"
 
 export type ReleaseType = "patch" | "minor" | "major"
 
 export const Event = {
-  Updated: BusEvent.define(
-    "installation.updated",
-    Schema.Struct({
+  Updated: EventV2.define({
+    type: "installation.updated",
+    schema: {
       version: Schema.String,
-    }),
-  ),
-  UpdateAvailable: BusEvent.define(
-    "installation.update-available",
-    Schema.Struct({
+    },
+  }),
+  UpdateAvailable: EventV2.define({
+    type: "installation.update-available",
+    schema: {
       version: Schema.String,
-    }),
-  ),
+    },
+  }),
 }
 
 export function getReleaseType(current: string, latest: string): ReleaseType {
@@ -111,23 +111,65 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
       Effect.catch(() => Effect.succeed("")),
     )
 
-    const upgradeCurl = Effect.fnUntraced(function* (target: string) {
-      const response = yield* httpOk.execute(HttpClientRequest.get("https://bcode.sh/install"))
-      const body = yield* response.text
-      const bodyBytes = new TextEncoder().encode(body)
-      const result = yield* appProcess.run(
-        ChildProcess.make("bash", [], {
-          stdin: Stream.make(bodyBytes),
-          env: { VERSION: target },
-          extendEnv: true,
-        }),
-      )
-      return {
-        code: result.exitCode,
-        stdout: result.stdout.toString("utf8"),
-        stderr: result.stderr.toString("utf8"),
-      }
-    }, Effect.orDie)
+    const run = Effect.fnUntraced(
+      function* (cmd: string[], opts?: { cwd?: string; env?: Record<string, string> }) {
+        const result = yield* appProcess.run(
+          ChildProcess.make(cmd[0], cmd.slice(1), {
+            cwd: opts?.cwd,
+            env: opts?.env,
+            extendEnv: true,
+          }),
+        )
+        return {
+          code: result.exitCode,
+          stdout: result.stdout.toString("utf8"),
+          stderr: result.stderr.toString("utf8"),
+        }
+      },
+      Effect.catch((err) => Effect.succeed({ code: 1, stdout: "", stderr: errorMessage(err) })),
+    )
+
+    const getBrewFormula = Effect.fnUntraced(function* () {
+      const tapFormula = yield* text(["brew", "list", "--formula", "anomalyco/tap/opencode"])
+      if (tapFormula.includes("opencode")) return "anomalyco/tap/opencode"
+      const coreFormula = yield* text(["brew", "list", "--formula", "opencode"])
+      if (coreFormula.includes("opencode")) return "opencode"
+      return "opencode"
+    })
+
+    const upgradeFailure = (method: Method, result?: { code: number; stdout: string; stderr: string }) => {
+      if (method === "choco") return "not running from an elevated command shell"
+      if (result) return `Upgrade failed for ${method} (exit code ${result.code}).`
+      return `Upgrade failed for ${method}.`
+    }
+
+    const upgradeScriptShell = Effect.fnUntraced(function* () {
+      const bashVersion = yield* text(["bash", "--version"])
+      if (bashVersion) return "bash"
+      return "sh"
+    })
+
+    const upgradeCurl = Effect.fnUntraced(
+      function* (target: string) {
+        const response = yield* httpOk.execute(HttpClientRequest.get("https://bcode.sh/install"))
+        const body = yield* response.text
+        const bodyBytes = new TextEncoder().encode(body)
+        const shell = yield* upgradeScriptShell()
+        const result = yield* appProcess.run(
+          ChildProcess.make(shell, [], {
+            stdin: Stream.make(bodyBytes),
+            env: { VERSION: target },
+            extendEnv: true,
+          }),
+        )
+        return {
+          code: result.exitCode,
+          stdout: result.stdout.toString("utf8"),
+          stderr: result.stderr.toString("utf8"),
+        }
+      },
+      Effect.mapError(() => new UpgradeFailedError({ stderr: upgradeFailure("curl") })),
+    )
 
     const result: Interface = {
       info: Effect.fn("Installation.info")(function* () {
@@ -171,7 +213,12 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
             stderr: `${upgradeResult.stderr.trimEnd()}\n\nReinstall with:\n  curl -fsSL https://bcode.sh/install | bash`,
           })
         }
-        log.info("upgraded", { method: m, target, stdout: upgradeResult.stdout, stderr: upgradeResult.stderr })
+        yield* Effect.logInfo("upgraded", {
+          method: m,
+          target,
+          stdout: upgradeResult.stdout,
+          stderr: upgradeResult.stderr,
+        })
         yield* text([process.execPath, "--version"])
       }),
     }
@@ -187,5 +234,7 @@ const { runPromise } = makeRuntime(Service, defaultLayer)
 export const latest = (...args: Parameters<Interface["latest"]>) => runPromise((s) => s.latest(...args))
 export const method = () => runPromise((s) => s.method())
 export const upgrade = (...args: Parameters<Interface["upgrade"]>) => runPromise((s) => s.upgrade(...args))
+
+export const node = LayerNode.make(layer, [httpClient, AppProcess.node])
 
 export * as Installation from "."
