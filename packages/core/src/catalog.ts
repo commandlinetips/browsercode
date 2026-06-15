@@ -3,6 +3,7 @@ export * as Catalog from "./catalog"
 import { Context, Effect, Layer, Option, Order, pipe, Schema, Array, Scope, Stream } from "effect"
 import { castDraft, enableMapSet, type Draft } from "immer"
 import { ModelV2 } from "./model"
+import { ModelRequest } from "./model-request"
 import { PluginV2 } from "./plugin"
 import { ProviderV2 } from "./provider"
 import { Location } from "./location"
@@ -89,7 +90,7 @@ enableMapSet()
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    yield* Location.Service
+    const location = yield* Location.Service
     const plugin = yield* PluginV2.Service
     const events = yield* EventV2.Service
     const policy = yield* Policy.Service
@@ -97,34 +98,22 @@ export const layer = Layer.effect(
 
     const resolve = (model: ModelV2.Info) => {
       const provider = state.get().providers.get(model.providerID)!.provider
-      const endpoint =
-        model.endpoint.type === "unknown"
-          ? provider.endpoint
-          : model.endpoint.type === "aisdk" && provider.endpoint.type === "aisdk" && !model.endpoint.url
-            ? { ...model.endpoint, url: provider.endpoint.url }
-            : model.endpoint
-      const options = {
-        headers: {
-          ...provider.options.headers,
-          ...model.options.headers,
-        },
-        body: {
-          ...provider.options.body,
-          ...model.options.body,
-        },
-        aisdk: {
-          provider: {
-            ...provider.options.aisdk.provider,
-            ...model.options.aisdk.provider,
-          },
-          request: model.options.aisdk.request,
-        },
-        variant: model.options.variant,
+      const api =
+        model.api.type === "native" && !model.api.url && Object.keys(model.api.settings).length === 0
+          ? { ...provider.api, id: model.api.id }
+          : model.api.type === "aisdk" && provider.api.type === "aisdk" && !model.api.url
+            ? { ...model.api, url: provider.api.url, settings: { ...provider.api.settings, ...model.api.settings } }
+            : model.api.type === "aisdk" && provider.api.type === "aisdk"
+              ? { ...model.api, settings: { ...provider.api.settings, ...model.api.settings } }
+              : model.api
+      const request = {
+        ...ModelRequest.merge({ ...provider.request, generation: {}, options: {} }, model.request),
+        variant: model.request.variant,
       }
       return new ModelV2.Info({
         ...model,
-        endpoint,
-        options,
+        api,
+        request,
       })
     }
 
@@ -134,10 +123,10 @@ export const layer = Layer.effect(
       return match
     }
 
-    const normalizeEndpoint = (item: Draft<ProviderV2.Info> | Draft<ModelV2.Info>) => {
-      if (item.endpoint.type !== "aisdk" || typeof item.options.aisdk.provider.baseURL !== "string") return
-      item.endpoint.url = item.options.aisdk.provider.baseURL
-      delete item.options.aisdk.provider.baseURL
+    const normalizeApi = (item: Draft<ProviderV2.Info> | Draft<ModelV2.Info>) => {
+      if (typeof item.request.body.baseURL !== "string") return
+      item.api.url = item.request.body.baseURL
+      delete item.request.body.baseURL
     }
 
     const state = State.create<Data, Editor>({
@@ -157,7 +146,7 @@ export const layer = Layer.effect(
                 draft.providers.set(providerID, current)
               }
               fn(current.provider)
-              normalizeEndpoint(current.provider)
+              normalizeApi(current.provider)
             },
             remove: (providerID) => {
               draft.providers.delete(providerID)
@@ -166,14 +155,20 @@ export const layer = Layer.effect(
           model: {
             get: (providerID, modelID) => draft.providers.get(providerID)?.models.get(modelID),
             update: (providerID, modelID, fn) => {
-              result.provider.update(providerID, () => {})
-              const record = draft.providers.get(providerID)!
+              let record = draft.providers.get(providerID)
+              if (!record) {
+                record = castDraft({
+                  provider: ProviderV2.Info.empty(providerID),
+                  models: new Map<ModelV2.ID, ModelV2.Info>(),
+                })
+                draft.providers.set(providerID, record)
+              }
               const model = record.models.get(modelID) ?? castDraft(ModelV2.Info.empty(providerID, modelID))
               if (!record.models.has(modelID)) record.models.set(modelID, model)
               fn(model)
               model.id = modelID
               model.providerID = providerID
-              normalizeEndpoint(model)
+              normalizeApi(model)
             },
             remove: (providerID, modelID) => {
               draft.providers.get(providerID)?.models.delete(modelID)
@@ -190,6 +185,7 @@ export const layer = Layer.effect(
       },
       finalize: Effect.fn("CatalogV2.finalize")(function* (catalog, reason) {
         if (reason !== "plugin.added") yield* plugin.trigger("catalog.transform", catalog, {}).pipe(Effect.asVoid)
+        if (!policy.hasStatements()) return
         for (const record of [...catalog.provider.list()]) {
           if ((yield* policy.evaluate("provider.use", record.provider.id, "allow")) === "deny") {
             catalog.provider.remove(record.provider.id)
@@ -197,10 +193,17 @@ export const layer = Layer.effect(
         }
       }),
     })
+    const available = (model: ModelV2.Info) =>
+      state.get().providers.get(model.providerID)?.provider.enabled !== false && model.enabled
 
     yield* events.subscribe(PluginV2.Event.Added).pipe(
+      // Plugin registries are location scoped even though the event bus is process scoped.
+      Stream.filter(
+        (event) =>
+          event.location?.directory === location.directory && event.location.workspaceID === location.workspaceID,
+      ),
       Stream.runForEach((event) =>
-        state.update((catalog) => plugin.triggerFor(event.data.id, "catalog.transform", catalog, {}), "plugin.added"),
+        state.mutate((catalog) => plugin.triggerFor(event.data.id, "catalog.transform", catalog, {}), "plugin.added"),
       ),
       Effect.forkIn(scope, { startImmediately: true }),
     )
@@ -243,17 +246,17 @@ export const layer = Layer.effect(
         }),
 
         available: Effect.fn("CatalogV2.model.available")(function* () {
-          return (yield* result.model.all()).filter((model) => {
-            const record = state.get().providers.get(model.providerID)
-            return record?.provider.enabled !== false && model.enabled
-          })
+          return (yield* result.model.all()).filter(available)
         }),
 
         default: Effect.fn("CatalogV2.model.default")(function* () {
           const defaultModel = state.get().defaultModel
           if (defaultModel) {
-            const model = yield* result.model.get(defaultModel.providerID, defaultModel.modelID).pipe(Effect.option)
-            if (Option.isSome(model) && model.value.enabled) return model
+            const provider = state.get().providers.get(defaultModel.providerID)?.provider
+            if (provider?.enabled !== false) {
+              const model = yield* result.model.get(defaultModel.providerID, defaultModel.modelID).pipe(Effect.option)
+              if (Option.isSome(model) && available(model.value)) return model
+            }
           }
 
           return pipe(
@@ -317,4 +320,7 @@ export const layer = Layer.effect(
 
 const SMALL_MODEL_RE = /\b(nano|flash|lite|mini|haiku|small|fast)\b/
 
-export const defaultLayer = layer.pipe(Layer.provide(EventV2.defaultLayer), Layer.provide(PluginV2.defaultLayer))
+export const locationLayer = layer.pipe(
+  Layer.provideMerge(PluginV2.locationLayer),
+  Layer.provideMerge(Policy.locationLayer),
+)
