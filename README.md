@@ -10,6 +10,10 @@ The unbounded power of the browser working seamlessly with your code. The agent 
 
 <!-- DEMO VIDEO HERE -->
 
+## Hosted
+
+Want to skip the setup? Use BrowserCode in [Browser Use Cloud](https://cloud.browser-use.com/v4?utm_campaign=browsercode-use-in-cloud&utm_source=github).
+
 ## One-Line Install
 
 Run this in a terminal that supports bash:
