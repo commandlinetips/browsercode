@@ -3,6 +3,7 @@ export * as Ripgrep from "./ripgrep"
 import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import path from "path"
+import { LayerNode } from "./effect/layer-node"
 import { Entry, Match } from "./filesystem/schema"
 import { FSUtil } from "./fs-util"
 import { AppProcess, collectStream, waitForAbort } from "./process"
@@ -161,10 +162,10 @@ export const layer = Layer.effect(
           args: [
             "--no-config",
             "--files",
-            "--glob=!**/.git/**",
             ...(input.hidden ? ["--hidden"] : []),
             ...(input.follow ? ["--follow"] : []),
             `--glob=${input.pattern}`,
+            "--glob=!**/.git/**",
             ".",
           ],
           parse: (line) =>
@@ -195,10 +196,10 @@ export const layer = Layer.effect(
           args: [
             "--no-config",
             "--files",
-            "--glob=!**/.git/**",
             ...(input.hidden ? ["--hidden"] : []),
             ...(input.follow ? ["--follow"] : []),
-            `--glob=${input.pattern}`,
+            ...(input.pattern === "*" ? [] : [`--glob=${input.pattern}`]),
+            "--glob=!**/.git/**",
             ".",
           ],
           parse: (line) => {
@@ -226,9 +227,9 @@ export const layer = Layer.effect(
             "--no-config",
             "--json",
             "--hidden",
-            "--glob=!**/.git/**",
             "--no-messages",
             ...(input.include ? [`--glob=${input.include}`] : []),
+            "--glob=!**/.git/**",
             "--",
             input.pattern,
             input.file ?? ".",
@@ -285,3 +286,4 @@ export const layer = Layer.effect(
 )
 
 export const defaultLayer = layer.pipe(Layer.provide(Layer.merge(RipgrepBinary.defaultLayer, AppProcess.defaultLayer)))
+export const node = LayerNode.make(layer, [RipgrepBinary.node, AppProcess.node])
