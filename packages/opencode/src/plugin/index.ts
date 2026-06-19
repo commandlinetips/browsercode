@@ -20,6 +20,7 @@ import { AzureAuthPlugin } from "./azure"
 import { LaminarPlugin } from "@browser-use/bcode-laminar"
 import { DigitalOceanAuthPlugin } from "./digitalocean"
 import { XaiAuthPlugin } from "./xai"
+import { SnowflakeCortexAuthPlugin } from "./snowflake-cortex"
 import { Effect, Layer, Context } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { InstanceState } from "@/effect/instance-state"
@@ -82,6 +83,7 @@ function internalPlugins(flags: RuntimeFlags.Info): PluginInstance[] {
     AzureAuthPlugin,
     LaminarPlugin,
     DigitalOceanAuthPlugin,
+    SnowflakeCortexAuthPlugin,
     XaiAuthPlugin,
   ]
 }
@@ -143,11 +145,12 @@ export const layer = Layer.effect(
 
         const { Server } = yield* Effect.promise(() => import("../server/server"))
 
+        const serverUrl = Server.url
         const client = createOpencodeClient({
-          baseUrl: "http://localhost:4096",
+          baseUrl: serverUrl?.toString() ?? "http://localhost:4096",
           directory: ctx.directory,
           headers: ServerAuth.headers(),
-          fetch: async (...args) => Server.Default().app.fetch(...args),
+          ...(serverUrl ? {} : { fetch: async (...args) => Server.Default().app.fetch(...args) }),
         })
         const cfg = yield* config.get()
         const input: PluginInput = {
