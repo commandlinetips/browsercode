@@ -60,6 +60,16 @@ const model: Provider.Model = {
   headers: {},
   release_date: "2026-01-01",
 }
+const visionModel: Provider.Model = {
+  ...model,
+  capabilities: {
+    ...model.capabilities,
+    input: {
+      ...model.capabilities.input,
+      image: true,
+    },
+  },
+}
 
 function userInfo(id: string): SessionV1.User {
   return {
@@ -371,7 +381,7 @@ describe("session.message-v2.toModelMessage", () => {
       },
     ]
 
-    expect(await MessageV2.toModelMessages(input, model)).toStrictEqual([
+    expect(await MessageV2.toModelMessages(input, visionModel)).toStrictEqual([
       {
         role: "user",
         content: [{ type: "text", text: "run tool" }],
@@ -405,6 +415,94 @@ describe("session.message-v2.toModelMessage", () => {
               ],
             },
             providerOptions: { openai: { tool: "meta" } },
+          },
+        ],
+      },
+    ])
+  })
+
+  test("replaces browser screenshots with text for visionless anthropic models", async () => {
+    const anthropicModel: Provider.Model = {
+      ...model,
+      id: ModelV2.ID.make("mimo-v2.5-pro"),
+      providerID: ProviderV2.ID.make("xiaomi-mimo"),
+      api: {
+        id: "mimo-v2.5-pro",
+        url: "https://api.xiaomimimo.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    }
+    const userID = "m-user-mimo"
+    const assistantID = "m-assistant-mimo"
+    const input: SessionV1.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1-mimo"),
+            type: "text",
+            text: "run tool",
+          },
+        ] as SessionV1.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID, undefined, { providerID: "xiaomi-mimo", modelID: "mimo-v2.5-pro" }),
+        parts: [
+          {
+            ...basePart(assistantID, "a1-mimo"),
+            type: "tool",
+            callID: "call-mimo-1",
+            tool: "browser_execute",
+            state: {
+              status: "completed",
+              input: { code: "await session.Page.captureScreenshot()" },
+              output: "(1 screenshot attached)",
+              title: "browser_execute",
+              metadata: {},
+              time: { start: 0, end: 1 },
+              attachments: [
+                {
+                  ...basePart(assistantID, "file-mimo-1"),
+                  type: "file",
+                  mime: "image/png",
+                  url: "data:image/png;base64,Zm9v",
+                },
+              ],
+            },
+          },
+        ] as SessionV1.Part[],
+      },
+    ]
+
+    const result = await MessageV2.toModelMessages(input, anthropicModel)
+    expect(result).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "run tool" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-mimo-1",
+            toolName: "browser_execute",
+            input: { code: "await session.Page.captureScreenshot()" },
+            providerExecuted: undefined,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-mimo-1",
+            toolName: "browser_execute",
+            output: {
+              type: "text",
+              value: "(1 screenshot attached)\nScreenshot was taken, but this model does not support image input.",
+            },
           },
         ],
       },
