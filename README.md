@@ -60,7 +60,7 @@ Recommended models from current BU Bench evals:
 - Best speed: `gpt-5.5`
 - Best open-weight: `glm-5.2`
 - Best value: `gemini-3.1-pro-preview`
-- Lowest cost: `gemini-3-flash-preview`
+- Lowest cost: `minimax-m3`
 
 ### Connect a Browser
 
